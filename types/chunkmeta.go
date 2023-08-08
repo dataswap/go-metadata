@@ -2,8 +2,8 @@ package types
 
 import (
 	"github.com/ipfs/go-cid"
+	ipld "github.com/ipfs/go-ipld-format"
 	pb "github.com/ipfs/go-unixfs/pb"
-	"github.com/ipld/go-ipld-prime"
 )
 
 // chunk meta

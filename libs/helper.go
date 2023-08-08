@@ -9,7 +9,7 @@ import (
 	pb "github.com/ipfs/go-unixfs/pb"
 )
 
-type HelperAction func(c cid.Cid, nodeType pb.Data_DataType, links []*ipld.Link)
+type HelperAction func(node ipld.Node, nodeType pb.Data_DataType)
 
 func DefaultHelperAction(c cid.Cid, nodeType pb.Data_DataType) {}
 
