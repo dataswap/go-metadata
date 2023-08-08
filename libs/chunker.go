@@ -77,4 +77,8 @@ func (ss *sliceSplitter) Reader() io.Reader {
 	return ss.r
 }
 
+func (ss *sliceSplitter) Bytes(start, offset int) ([]byte, error) {
+	return nil, nil
+}
+
 var _ chunker.Splitter = &sliceSplitter{}

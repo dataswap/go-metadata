@@ -18,6 +18,7 @@ type WrapDagBuilder struct {
 	hcb HelperAction
 }
 
+// TODO: ????  考虑对DagServer封装，并实现chunk信息记录,WrapDagBuilder全部废除
 func WrappedDagBuilder(params *helpers.DagBuilderParams, spl chunker.Splitter, hcb HelperAction) (*WrapDagBuilder, error) {
 	db, err := params.New(spl)
 	if err != nil {
@@ -67,7 +68,7 @@ func (w *WrapDagBuilder) NewLeafDataNode(fsNodeType pb.Data_DataType) (node ipld
 		return nil, 0, err
 	}
 
-	w.hcb(node.Cid(), fsNodeType, node.Links())
+	w.hcb(node, fsNodeType)
 
 	// Convert this leaf to a `FilestoreNode` if needed.
 	node = w.ProcessFileStore(node, dataSize)

@@ -11,6 +11,9 @@ import (
 	"github.com/ipfs/go-cid"
 	chunker "github.com/ipfs/go-ipfs-chunker"
 	helpers "github.com/ipfs/go-unixfs/importer/helpers"
+	"github.com/ipfs/go-unixfsnode/data"
+	dagpb "github.com/ipld/go-codec-dagpb"
+	"github.com/multiformats/go-multicodec"
 
 	pb "github.com/ipfs/go-unixfs/pb"
 
@@ -29,6 +32,7 @@ type MetaService struct {
 	spl    chunker.Splitter //Splitter
 	writer io.Writer        //car's writer
 	helper helpers.Helper   //Helper
+	ds     ipld.DAGService
 
 	metas map[cid.Cid]*types.ChunkMeta // chunks
 	lk    sync.Mutex
@@ -45,6 +49,43 @@ func New() *MetaService {
 		metas: make(map[cid.Cid]*types.ChunkMeta, 0),
 		splCh: make(chan *types.SrcData),
 		hashs: make(map[uint]map[int][]byte),
+	}
+}
+
+func (ms *MetaService) getNodeType(node ipld.Node) (pb.Data_DataType, error) {
+	var nodeType pb.Data_DataType
+	if node.Cid().Prefix().Codec == uint64(multicodec.DagPb) {
+		builder := dagpb.Type.PBNode.NewBuilder()
+		if err := dagpb.DecodeBytes(builder, node.RawData()); err != nil {
+			return nodeType, err
+		}
+		n := builder.Build()
+		pbn, ok := n.(dagpb.PBNode)
+		if !ok {
+			return nodeType, fmt.Errorf("node cant assert to PBNode")
+		}
+		ufd, err := data.DecodeUnixFSData(pbn.Data.Must().Bytes())
+		if err != nil {
+			return nodeType, err
+		}
+		nodeType = pb.Data_DataType(ufd.FieldDataType().Int())
+	}
+	return nodeType, nil
+}
+
+func (ms *MetaService) dagServerAction(node ipld.Node) {
+	if nt, err := ms.getNodeType(node); err != nil {
+		var cm types.ChunkMeta
+		meta := <-ms.splCh
+		{
+			cm.SrcPath = meta.Path
+			cm.SrcOffset = meta.Offset
+			cm.Size = meta.Size
+			cm.NodeType = nt
+			cm.Cid = node.Cid()
+			cm.Links = node.Links()
+		}
+		ms.insertMeta(cm.Cid, &cm)
 	}
 }
 
