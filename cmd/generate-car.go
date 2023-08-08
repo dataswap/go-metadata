@@ -1,10 +1,7 @@
 package main
 
 import (
-	"io"
 	"os"
-
-	llog "log"
 
 	"github.com/urfave/cli/v2"
 
@@ -13,15 +10,9 @@ import (
 
 var log = logging.Logger("generate-car")
 
-func init() {
-	llog.SetOutput(io.Discard)
-}
-
-func main() { os.Exit(main1()) }
-
-func main1() int {
+func main() {
 	app := &cli.App{
-		Name:     "noah",
+		Name:     "generate-car",
 		Usage:    "Utility for working with car files",
 		Before:   before,
 		Commands: []*cli.Command{
@@ -32,12 +23,12 @@ func main1() int {
 	err := app.Run(os.Args)
 	if err != nil {
 		log.Error(err)
-		return 1
+		return
 	}
-	return 0
+	return
 }
 
 func before(cctx *cli.Context) error {
-	_ = logging.SetLogLevel("noah", "INFO")
+	_ = logging.SetLogLevel("generate-car", "INFO")
 	return nil
 }
