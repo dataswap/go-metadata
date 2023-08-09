@@ -18,11 +18,11 @@ type WrapDagService struct {
 	cb DagServiceAction
 }
 
-func WrappedDagService(dagService ipld.DAGService, cb DagServiceAction) (ipld.DAGService, error) {
+func WrappedDagService(dagService ipld.DAGService, cb DagServiceAction) ipld.DAGService {
 	return &WrapDagService{
 		ds: dagService,
 		cb: cb,
-	}, nil
+	}
 }
 
 func (wds *WrapDagService) Add(ctx context.Context, node ipld.Node) error {

@@ -92,12 +92,8 @@ func (ms *MetaService) getProtoNodeType(node *dag.ProtoNode) (pb.Data_DataType, 
 	return fsNode.Type(), nil
 }
 
-func (ms *MetaService) GenDagService(ds ipld.DAGService) (ipld.DAGService, error) {
-	nds, err := libs.WrappedDagService(ds, ms.dagServerAction)
-	if err != nil {
-		return nil, err
-	}
-	return nds, nil
+func (ms *MetaService) GenDagService(ds ipld.DAGService) ipld.DAGService {
+	return libs.WrappedDagService(ds, ms.dagServerAction)
 }
 
 func (ms *MetaService) dagServerAction(node ipld.Node) {
@@ -148,8 +144,7 @@ func (ms *MetaService) helperAction(node ipld.Node, nodeType pb.Data_DataType) {
 }
 
 func (ms *MetaService) GenSplitter(r io.Reader, srcPath string, call bool) chunker.Splitter {
-	spl := libs.NewSliceSplitter(r, int64(libs.UnixfsChunkSize), srcPath, ms.splitterAction, call)
-	return spl
+	return libs.NewSliceSplitter(r, int64(libs.UnixfsChunkSize), srcPath, ms.splitterAction, call)
 }
 
 func (ms *MetaService) splitterAction(srcPath string, offset uint64, size uint32, eof bool) {

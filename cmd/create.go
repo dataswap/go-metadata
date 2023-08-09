@@ -201,8 +201,7 @@ func Build(ctx context.Context, reader io.Reader, into bstore.Blockstore, filest
 
 	if msrv != nil {
 		spl = msrv.GenSplitter(reader, srcPath, true)
-		ds, _ := msrv.GenDagService(bufdag)
-		params.Dagserv = ds
+		params.Dagserv = msrv.GenDagService(bufdag)
 	} else {
 		spl = chunker.NewSizeSplitter(reader, int64(libs.UnixfsChunkSize))
 	}
