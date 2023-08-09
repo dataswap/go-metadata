@@ -8,17 +8,16 @@ import (
 	logging "github.com/ipfs/go-log/v2"
 )
 
-var log = logging.Logger("generate-car")
+var log = logging.Logger("meta")
 
 func main() {
 	app := &cli.App{
-		Name:   "generate-car",
+		Name:   "meta",
 		Usage:  "Utility for working with car files",
 		Before: before,
 		Commands: []*cli.Command{
-			//generateCarCmd,
-			listCmd,
 			createCmd,
+			listCmd,
 		},
 	}
 
@@ -31,6 +30,6 @@ func main() {
 }
 
 func before(cctx *cli.Context) error {
-	_ = logging.SetLogLevel("generate-car", "INFO")
+	_ = logging.SetLogLevel("meta", "INFO")
 	return nil
 }

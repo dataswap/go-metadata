@@ -9,16 +9,16 @@ GOCC?=go
 
 BUILD_DEPS:=
 
-generate-car: $(BUILD_DEPS)
-	rm -f generate-car
-	$(GOCC) build $(GOFLAGS) -o generate-car ./cmd
+meta: $(BUILD_DEPS)
+	rm -f meta
+	$(GOCC) build $(GOFLAGS) -o meta ./cmd
 
-.PHONY: generate-car
-BINS+=generate-car
+.PHONY: meta
+BINS+=meta
 
-build: generate-car
-	@[[ $$(type -P "generate-car") ]] && echo "Caution: you have \
-	an existing generate-car binary in your PATH. you can execute make install to /usr/local/bin" || true
+build: meta
+	@[[ $$(type -P "meta") ]] && echo "Caution: you have \
+	an existing meta binary in your PATH. you can execute make install to /usr/local/bin" || true
 
 .PHONY: build
 
@@ -26,7 +26,7 @@ clean:
 	rm -rf $(BINS)
 .PHONY: clean
 
-install: install-generate-car
+install: install-meta
 
-install-generate-car:
-	install -C ./generate-car /usr/local/bin
+install-meta:
+	install -C ./meta /usr/local/bin
