@@ -11,7 +11,7 @@ import (
 
 type HelperAction func(node ipld.Node, nodeType pb.Data_DataType)
 
-func DefaultHelperAction(c cid.Cid, nodeType pb.Data_DataType) {}
+func DefaultHelperAction(node ipld.Node, nodeType pb.Data_DataType) {}
 
 type WrapDagBuilder struct {
 	db  *helpers.DagBuilderHelper

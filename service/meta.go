@@ -1,23 +1,26 @@
-package service
+package metaservice
 
 import (
+	"encoding/binary"
 	"fmt"
 	"io"
 	"math"
+	"sort"
 	"sync"
 
 	"github.com/dataswap/go-metadata/libs"
 	"github.com/dataswap/go-metadata/types"
+	"github.com/dataswap/go-metadata/utils"
 	"github.com/ipfs/go-cid"
 	chunker "github.com/ipfs/go-ipfs-chunker"
 	helpers "github.com/ipfs/go-unixfs/importer/helpers"
-	"github.com/ipfs/go-unixfsnode/data"
-	dagpb "github.com/ipld/go-codec-dagpb"
-	"github.com/multiformats/go-multicodec"
+	"github.com/ipld/go-car/util"
 
-	pb "github.com/ipfs/go-unixfs/pb"
-
+	pi "github.com/ipfs/go-ipfs-posinfo"
 	ipld "github.com/ipfs/go-ipld-format"
+	dag "github.com/ipfs/go-merkledag"
+	"github.com/ipfs/go-unixfs"
+	pb "github.com/ipfs/go-unixfs/pb"
 )
 
 const (
@@ -29,13 +32,13 @@ const (
 var DefaultMerkletreeStartNumberOfLayers = uint(math.Log2(float64(DefaultMerkleLeavesNodeSize)/32) + 1)
 
 type MetaService struct {
-	spl    chunker.Splitter //Splitter
-	writer io.Writer        //car's writer
-	helper helpers.Helper   //Helper
-	ds     ipld.DAGService
+	opts   *Options
+	helper helpers.Helper //Helper
 
-	metas map[cid.Cid]*types.ChunkMeta // chunks
-	lk    sync.Mutex
+	metas    map[cid.Cid]*types.ChunkMeta // chunks
+	rawSizes map[cid.Cid]uint64           // chunks raw size
+	lk       sync.Mutex
+	root     cid.Cid
 
 	splCh chan *types.SrcData // source data slice channel
 
@@ -44,49 +47,80 @@ type MetaService struct {
 	hlk   sync.Mutex
 }
 
-func New() *MetaService {
+func New(opts ...Option) *MetaService {
+	options := newOptions(opts...)
 	return &MetaService{
-		metas: make(map[cid.Cid]*types.ChunkMeta, 0),
-		splCh: make(chan *types.SrcData),
-		hashs: make(map[uint]map[int][]byte),
+		opts:     options,
+		root:     cid.Undef,
+		metas:    make(map[cid.Cid]*types.ChunkMeta, 0),
+		rawSizes: make(map[cid.Cid]uint64, 0),
+		splCh:    make(chan *types.SrcData),
+		hashs:    make(map[uint]map[int][]byte),
 	}
+}
+
+func (ms *MetaService) SetCarRoot(root cid.Cid) {
+	ms.root = root
 }
 
 func (ms *MetaService) getNodeType(node ipld.Node) (pb.Data_DataType, error) {
-	var nodeType pb.Data_DataType
-	if node.Cid().Prefix().Codec == uint64(multicodec.DagPb) {
-		builder := dagpb.Type.PBNode.NewBuilder()
-		if err := dagpb.DecodeBytes(builder, node.RawData()); err != nil {
-			return nodeType, err
+	//fmt.Println("node type:", reflect.TypeOf(node))
+	switch tnode := node.(type) {
+	case *pi.FilestoreNode:
+		{
+			switch fnode := tnode.Node.(type) {
+			case *dag.ProtoNode:
+				return ms.getProtoNodeType(fnode)
+			case *dag.RawNode:
+				return pb.Data_Raw, nil
+			default:
+				return 0xff, unixfs.ErrUnrecognizedType
+			}
 		}
-		n := builder.Build()
-		pbn, ok := n.(dagpb.PBNode)
-		if !ok {
-			return nodeType, fmt.Errorf("node cant assert to PBNode")
-		}
-		ufd, err := data.DecodeUnixFSData(pbn.Data.Must().Bytes())
-		if err != nil {
-			return nodeType, err
-		}
-		nodeType = pb.Data_DataType(ufd.FieldDataType().Int())
+	case *dag.ProtoNode:
+		return ms.getProtoNodeType(tnode)
+	default:
+		return 0xff, unixfs.ErrUnrecognizedType
 	}
-	return nodeType, nil
+}
+
+func (ms *MetaService) getProtoNodeType(node *dag.ProtoNode) (pb.Data_DataType, error) {
+	fsNode, err := unixfs.FSNodeFromBytes(node.Data())
+	if err != nil {
+		return 0xff, fmt.Errorf("incorrectly formatted protobuf: %s", err)
+	}
+	return fsNode.Type(), nil
+}
+
+func (ms *MetaService) GenDagService(ds ipld.DAGService) (ipld.DAGService, error) {
+	nds, err := libs.WrappedDagService(ds, ms.dagServerAction)
+	if err != nil {
+		return nil, err
+	}
+	return nds, nil
 }
 
 func (ms *MetaService) dagServerAction(node ipld.Node) {
-	if nt, err := ms.getNodeType(node); err != nil {
-		var cm types.ChunkMeta
-		meta := <-ms.splCh
+	var cm types.ChunkMeta
+	cm.Cid = node.Cid()
+	cm.Links = node.Links()
+	cm.ChunkSize = util.LdSize(node.Cid().Bytes(), node.RawData())
+	if nt, err := ms.getNodeType(node); err == nil {
+		cm.NodeType = nt
+	} else {
+		fmt.Printf("get node type failed:%s\n", err.Error())
+	}
+	select {
+	case meta := <-ms.splCh:
 		{
 			cm.SrcPath = meta.Path
 			cm.SrcOffset = meta.Offset
 			cm.Size = meta.Size
-			cm.NodeType = nt
-			cm.Cid = node.Cid()
-			cm.Links = node.Links()
+			//fmt.Println("meta size: ", meta.Size, " node size: ", size)
 		}
-		ms.insertMeta(cm.Cid, &cm)
+	default:
 	}
+	ms.insertMeta(cm.Cid, &cm, uint64(len(node.RawData())))
 }
 
 func (ms *MetaService) SetHelper(params *helpers.DagBuilderParams, spl chunker.Splitter) (helpers.Helper, error) {
@@ -110,12 +144,11 @@ func (ms *MetaService) helperAction(node ipld.Node, nodeType pb.Data_DataType) {
 		cm.Links = node.Links()
 	}
 
-	ms.insertMeta(cm.Cid, &cm)
+	ms.insertMeta(cm.Cid, &cm, uint64(len(node.RawData())))
 }
 
-func (ms *MetaService) SetSplitter(r io.Reader, srcPath string, call bool) chunker.Splitter {
+func (ms *MetaService) GenSplitter(r io.Reader, srcPath string, call bool) chunker.Splitter {
 	spl := libs.NewSliceSplitter(r, int64(libs.UnixfsChunkSize), srcPath, ms.splitterAction, call)
-	ms.spl = spl
 	return spl
 }
 
@@ -124,35 +157,41 @@ func (ms *MetaService) splitterAction(srcPath string, offset uint64, size uint32
 		ms.splCh <- &types.SrcData{
 			Path:   srcPath,
 			Offset: offset,
-			Size:   size,
+			Size:   uint64(size),
 		}
 	}()
 }
 
-func (ms *MetaService) SetCarWriter(w io.Writer, path string, call bool) io.Writer {
+func (ms *MetaService) GenCarWriter(w io.Writer, path string, call bool) io.Writer {
 	if !call {
 		return w
 	}
 	writer := libs.WrappedWriter(w, path, ms.carWriteAfterAction, libs.DefaultWriteBeforeAction)
-	ms.writer = writer
 	return writer
 }
 
-func (ms *MetaService) carWriteAfterAction(dstpath string, c cid.Cid, count int, offset uint64) {
-	if _, ok := ms.metas[c]; !ok {
-		fmt.Printf("meta cid: %s is not exist\n", c.String())
-		return
+func (ms *MetaService) carWriteAfterAction(dstpath string, buf []byte, offset uint64) {
+	fmt.Println(">>>>>> Write dstPath:", dstpath, " offset: ", offset, " count:", len(buf))
+
+	if c, err := cid.Parse(buf); err == nil {
+		if _, ok := ms.metas[c]; !ok {
+			fmt.Printf("meta cid: %s is not exist\n", c.String())
+			return
+		}
+		if err := ms.updateMeta(c, dstpath, offset); err != nil {
+			fmt.Printf("update meta failed:%s\n", err.Error())
+		}
 	}
-	ms.updateMeta(c, dstpath, offset)
 }
 
-func (ms *MetaService) insertMeta(c cid.Cid, cm *types.ChunkMeta) error {
+func (ms *MetaService) insertMeta(c cid.Cid, cm *types.ChunkMeta, rawSize uint64) error {
 	ms.lk.Lock()
 	defer ms.lk.Unlock()
 	if _, ok := ms.metas[c]; ok {
 		return fmt.Errorf("meta srcpath:%s offset: %d size: %d cid: %s exist", cm.SrcPath, cm.SrcOffset, cm.Size, c.String())
 	}
 	ms.metas[c] = cm
+	ms.rawSizes[c] = rawSize
 	return nil
 }
 
@@ -163,8 +202,33 @@ func (ms *MetaService) updateMeta(c cid.Cid, dstpath string, offset uint64) erro
 		return fmt.Errorf("meta cid: %s is not exist", c.String())
 	}
 
-	ms.metas[c].DstPath = dstpath
+	fmt.Printf("update meta cid:%s path:%s offset:%d\n", c.String(), dstpath, offset)
+	//ms.metas[c].DstPath = dstpath
+	if rs, ok := ms.rawSizes[c]; ok {
+		sum := rs + uint64(len(c.Bytes()))
+		buf := make([]byte, 8)
+		n := binary.PutUvarint(buf, sum)
+		offset = offset - uint64(n)
+	}
 	ms.metas[c].DstOffset = offset
 
 	return nil
+}
+
+func (ms *MetaService) PrintJson(path string) error {
+	meta := &types.Meta{
+		DagRoot: ms.root,
+		Metas:   make([]*types.ChunkMeta, 0),
+	}
+	ms.lk.Lock()
+	defer ms.lk.Unlock()
+	for _, v := range ms.metas {
+		meta.Metas = append(meta.Metas, v)
+	}
+
+	sort.Slice(meta.Metas, func(i int, j int) bool {
+		return meta.Metas[i].DstOffset < meta.Metas[j].DstOffset
+	})
+
+	return utils.WriteJson(path+"/"+ms.root.String()+".json", "\t", meta)
 }

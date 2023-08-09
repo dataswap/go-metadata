@@ -12,11 +12,13 @@ var log = logging.Logger("generate-car")
 
 func main() {
 	app := &cli.App{
-		Name:     "generate-car",
-		Usage:    "Utility for working with car files",
-		Before:   before,
+		Name:   "generate-car",
+		Usage:  "Utility for working with car files",
+		Before: before,
 		Commands: []*cli.Command{
 			//generateCarCmd,
+			listCmd,
+			createCmd,
 		},
 	}
 

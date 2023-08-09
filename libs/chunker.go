@@ -7,7 +7,7 @@ import (
 	pool "github.com/libp2p/go-buffer-pool"
 )
 
-const UnixfsChunkSize uint64 = 2 << 20 //Deafault chunksize 2M
+const UnixfsChunkSize uint64 = 1 << 20 //Deafault chunksize 2M
 
 type SplitterAction func(srcPath string, offset uint64, size uint32, eof bool)
 
