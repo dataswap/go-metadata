@@ -18,6 +18,7 @@ func main() {
 		Commands: []*cli.Command{
 			createCmd,
 			listCmd,
+			commpCmd,
 		},
 	}
 
