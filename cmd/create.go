@@ -13,7 +13,6 @@ import (
 	"github.com/ipfs/go-cidutil"
 	"github.com/ipfs/go-cidutil/cidenc"
 	bstore "github.com/ipfs/go-ipfs-blockstore"
-	chunker "github.com/ipfs/go-ipfs-chunker"
 	offline "github.com/ipfs/go-ipfs-exchange-offline"
 	files "github.com/ipfs/go-ipfs-files"
 	ipld "github.com/ipfs/go-ipld-format"
@@ -189,8 +188,7 @@ func Build(ctx context.Context, reader io.Reader, into bstore.Blockstore, filest
 	bsvc := blockservice.New(into, offline.Exchange(into))
 	dags := merkledag.NewDAGService(bsvc)
 	bufdag := ipld.NewBufferedDAG(ctx, dags)
-	var spl chunker.Splitter
-	//var db helpers.Helper
+	var db helpers.Helper
 	params := helpers.DagBuilderParams{
 		Maxlinks:   UnixfsLinksPerLevel,
 		RawLeaves:  true,
@@ -199,14 +197,14 @@ func Build(ctx context.Context, reader io.Reader, into bstore.Blockstore, filest
 		NoCopy:     filestore,
 	}
 
+	spl := libs.NewSplitter(reader, int64(libs.UnixfsChunkSize), srcPath)
 	if msrv != nil {
-		spl = msrv.GenSplitter(reader, srcPath, true)
 		params.Dagserv = msrv.GenDagService(bufdag)
+		db, err = msrv.GenHelper(&params, spl)
 	} else {
-		spl = chunker.NewSizeSplitter(reader, int64(libs.UnixfsChunkSize))
+		db, err = params.New(spl)
 	}
 
-	db, err := params.New(spl)
 	if err != nil {
 		return cid.Undef, err
 	}

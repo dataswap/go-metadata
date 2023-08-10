@@ -16,7 +16,6 @@ type WrapWriter struct {
 	io.Writer
 	path   string
 	offset uint64
-	//count  int
 	after  WriteAfterAction
 	before WriteBeforeAction
 }
@@ -29,14 +28,6 @@ func (bc *WrapWriter) Write(p []byte) (int, error) {
 
 	n, err := bc.Writer.Write(buf)
 	if err == nil {
-		//size := len(p)
-		//bc.count = size
-		//if size == DefaultCidSize {
-		//	if c, err := cid.Parse(p); err == nil {
-		//		bc.after(bc.path, c, bc.count, bc.offset)
-		//	}
-		//}
-		//fmt.Println(">>>>>> Write dstPath:", bc.path, " offset: ", bc.offset, " count:", bc.count)
 		bc.after(bc.path, buf, bc.offset)
 		bc.offset += uint64(n)
 		return n, nil

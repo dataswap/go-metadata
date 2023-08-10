@@ -1,61 +1,51 @@
 package libs
 
 import (
+	"context"
+	"io"
+	"sync"
+
 	cid "github.com/ipfs/go-cid"
-	chunker "github.com/ipfs/go-ipfs-chunker"
 	ipld "github.com/ipfs/go-ipld-format"
-	dag "github.com/ipfs/go-merkledag"
 	"github.com/ipfs/go-unixfs/importer/helpers"
 	pb "github.com/ipfs/go-unixfs/pb"
 )
 
-type HelperAction func(node ipld.Node, nodeType pb.Data_DataType)
+type HelperAction func(node ipld.Node, srcPath string, offset uint64, size uint64)
 
-func DefaultHelperAction(node ipld.Node, nodeType pb.Data_DataType) {}
-
-type WrapDagBuilder struct {
-	db  *helpers.DagBuilderHelper
-	hcb HelperAction
+func DefaultHelperAction(node ipld.Node, srcPath string, offset uint64, size uint64) {
 }
 
-// TODO: ????  考虑对DagServer封装，并实现chunk信息记录,WrapDagBuilder全部废除
-func WrappedDagBuilder(params *helpers.DagBuilderParams, spl chunker.Splitter, hcb HelperAction) (*WrapDagBuilder, error) {
+type WrapDagBuilder struct {
+	helpers.Helper
+	spl   EnhancedSplitter
+	hcb   HelperAction
+	dserv ipld.DAGService
+	metas map[cid.Cid]*SliceMeta
+
+	recvdErr error
+	nextData []byte // the next item to return.
+	nextMeta *SliceMeta
+
+	lk sync.RWMutex
+}
+
+func WrappedDagBuilder(params *helpers.DagBuilderParams, spl EnhancedSplitter, hcb HelperAction) (*WrapDagBuilder, error) {
 	db, err := params.New(spl)
 	if err != nil {
 		return nil, err
 	}
 	return &WrapDagBuilder{
-		db:  db,
-		hcb: hcb,
+		Helper: db,
+		spl:    spl,
+		dserv:  params.Dagserv,
+		hcb:    hcb,
+		metas:  make(map[cid.Cid]*SliceMeta, 0),
 	}, nil
 }
 
-func (w *WrapDagBuilder) Done() bool {
-	return w.db.Done()
-}
-
-func (w *WrapDagBuilder) Next() ([]byte, error) {
-	return w.db.Next()
-}
-
-func (w *WrapDagBuilder) GetDagServ() ipld.DAGService {
-	return w.db.GetDagServ()
-}
-
-func (w *WrapDagBuilder) GetCidBuilder() cid.Builder {
-	return w.db.GetCidBuilder()
-}
-
-func (w *WrapDagBuilder) NewLeafNode(data []byte, fsNodeType pb.Data_DataType) (ipld.Node, error) {
-	return w.db.NewLeafNode(data, fsNodeType)
-}
-
-func (w *WrapDagBuilder) FillNodeLayer(node *helpers.FSNodeOverDag) error {
-	return w.db.FillNodeLayer(node)
-}
-
 func (w *WrapDagBuilder) NewLeafDataNode(fsNodeType pb.Data_DataType) (node ipld.Node, dataSize uint64, err error) {
-	fileData, err := w.Next()
+	fileData, meta, err := w.next()
 	if err != nil {
 		return nil, 0, err
 	}
@@ -68,33 +58,68 @@ func (w *WrapDagBuilder) NewLeafDataNode(fsNodeType pb.Data_DataType) (node ipld
 		return nil, 0, err
 	}
 
-	w.hcb(node, fsNodeType)
-
 	// Convert this leaf to a `FilestoreNode` if needed.
 	node = w.ProcessFileStore(node, dataSize)
 
+	w.lk.Lock()
+	defer w.lk.Unlock()
+	w.metas[node.Cid()] = meta
+
 	return node, dataSize, nil
-
-}
-
-func (w *WrapDagBuilder) ProcessFileStore(node ipld.Node, dataSize uint64) ipld.Node {
-	return w.db.ProcessFileStore(node, dataSize)
 }
 
 func (w *WrapDagBuilder) Add(node ipld.Node) error {
-	return w.db.Add(node)
+	w.lk.RLock()
+	defer w.lk.RUnlock()
+	if meta, ok := w.metas[node.Cid()]; ok {
+		w.hcb(node, meta.Path, meta.Offset, meta.Size)
+	}
+
+	return w.dserv.Add(context.TODO(), node)
 }
 
-func (w *WrapDagBuilder) Maxlinks() int {
-	return w.db.Maxlinks()
+// prepareNext consumes the next item from the splitter and puts it
+// in the nextData field. it is idempotent-- if nextData is full
+// it will do nothing.
+func (w *WrapDagBuilder) prepareNext() {
+	// if we already have data waiting to be consumed, we're ready
+	if w.nextData != nil || w.recvdErr != nil {
+		return
+	}
+
+	w.nextData, w.nextMeta, w.recvdErr = w.spl.NextBytesWithMeta()
+	if w.recvdErr == io.EOF {
+		w.recvdErr = nil
+	}
 }
 
-func (w *WrapDagBuilder) NewFSNodeOverDag(fsNodeType pb.Data_DataType) *helpers.FSNodeOverDag {
-	return w.db.NewFSNodeOverDag(fsNodeType)
+// Done returns whether or not we're done consuming the incoming data.
+func (w *WrapDagBuilder) Done() bool {
+	// ensure we have an accurate perspective on data
+	// as `done` this may be called before `next`.
+	w.prepareNext() // idempotent
+	if w.recvdErr != nil {
+		return false
+	}
+	return w.nextData == nil
 }
 
-func (w *WrapDagBuilder) NewFSNFromDag(nd *dag.ProtoNode) (*helpers.FSNodeOverDag, error) {
-	return w.db.NewFSNFromDag(nd)
+// Next returns the next chunk of data to be inserted into the dag
+// if it returns nil, that signifies that the stream is at an end, and
+// that the current building operation should finish.
+func (w *WrapDagBuilder) Next() ([]byte, error) {
+	w.prepareNext() // idempotent
+	d := w.nextData
+	w.nextData = nil // signal we've consumed it
+	if w.recvdErr != nil {
+		return nil, w.recvdErr
+	}
+	return d, nil
+}
+
+func (w *WrapDagBuilder) next() ([]byte, *SliceMeta, error) {
+	buf, err := w.Next()
+	return buf, w.nextMeta, err
 }
 
 var _ helpers.Helper = &WrapDagBuilder{}

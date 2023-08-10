@@ -99,7 +99,7 @@ func ListCar(c *cli.Context) error {
 				fmt.Fprintf(outStream, "\t%d links. %d bytes\n", pbn.Links.Length(), dl)
 				// example link:
 				li := pbn.Links.ListIterator()
-				max := 3
+				max := 100
 				for !li.Done() {
 					_, l, _ := li.Next()
 					max--

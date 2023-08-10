@@ -4,81 +4,46 @@ import (
 	"io"
 
 	chunker "github.com/ipfs/go-ipfs-chunker"
-	pool "github.com/libp2p/go-buffer-pool"
 )
 
 const UnixfsChunkSize uint64 = 1 << 20 //Deafault chunksize 2M
 
-type SplitterAction func(srcPath string, offset uint64, size uint32, eof bool)
+type SliceMeta struct {
+	Path   string
+	Offset uint64
+	Size   uint64
+}
 
-func DefaultSplitterAction(srcPath string, offset uint64, size uint32, eof bool) {}
+type EnhancedSplitter interface {
+	chunker.Splitter
+	NextBytesWithMeta() ([]byte, *SliceMeta, error)
+}
 
 type sliceSplitter struct {
-	r    io.Reader
-	size uint32
-	err  error
-
+	chunker.Splitter
 	// source data's path
 	srcPath string
-
-	cb     SplitterAction
-	offset uint64
+	offset  uint64
 }
 
-// NewSliceSplitter returns a new size-based Splitter with the given block size.
-func NewSliceSplitter(r io.Reader, size int64, srcPath string, cb SplitterAction, call bool) chunker.Splitter {
-	var callback SplitterAction
-	if call {
-		callback = cb
-	} else {
-		callback = DefaultSplitterAction
-	}
+func NewSplitter(r io.Reader, size int64, srcPath string) EnhancedSplitter {
+	spl := chunker.NewSizeSplitter(r, size)
 	return &sliceSplitter{
-		srcPath: srcPath,
-		r:       r,
-		size:    uint32(size),
-		cb:      callback,
-		offset:  0,
+		Splitter: spl,
+		offset:   0,
 	}
 }
 
-// NextBytes produces a new chunk.
-func (ss *sliceSplitter) NextBytes() ([]byte, error) {
-	if ss.err != nil {
-		return nil, ss.err
+func (ss *sliceSplitter) NextBytesWithMeta() ([]byte, *SliceMeta, error) {
+	buf, err := ss.NextBytes()
+	size := len(buf)
+	m := &SliceMeta{
+		Path:   ss.srcPath,
+		Offset: ss.offset,
+		Size:   uint64(size),
 	}
-
-	full := pool.Get(int(ss.size))
-	n, err := io.ReadFull(ss.r, full)
-	switch err {
-	case io.ErrUnexpectedEOF:
-		ss.err = io.EOF
-		small := make([]byte, n)
-		copy(small, full)
-		pool.Put(full)
-		ss.record(uint32(n), false)
-		return small, nil
-	case nil:
-		ss.record(ss.size, false)
-		return full, nil
-	default:
-		pool.Put(full)
-		return nil, err
-	}
-}
-
-func (ss *sliceSplitter) record(size uint32, eof bool) {
-	ss.cb(ss.srcPath, ss.offset, size, eof)
 	ss.offset += uint64(size)
+	return buf, m, err
 }
 
-// Reader returns the io.Reader associated to this Splitter.
-func (ss *sliceSplitter) Reader() io.Reader {
-	return ss.r
-}
-
-func (ss *sliceSplitter) Bytes(start, offset int) ([]byte, error) {
-	return nil, nil
-}
-
-var _ chunker.Splitter = &sliceSplitter{}
+var _ EnhancedSplitter = &sliceSplitter{}
