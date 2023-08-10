@@ -56,10 +56,10 @@ func NewHashFunc(data []byte) ([]byte, error) {
 // SHA256 DataPadding function for commp
 func DataPadding(inSlab []byte) []byte {
 
-	quadsCount := len(inSlab) / SOURCE_CHUNK_SIZE
-	outSlab := make([]byte, quadsCount*SLAB_CHUNK_SIZE)
+	chunkCount := len(inSlab) / SOURCE_CHUNK_SIZE
+	outSlab := make([]byte, chunkCount*SLAB_CHUNK_SIZE)
 
-	for j := 0; j < quadsCount; j++ {
+	for j := 0; j < chunkCount; j++ {
 		// Cycle over four(4) 31-byte groups, leaving 1 byte in between:
 		// 31 + 1 + 31 + 1 + 31 + 1 + 31 = 127
 		input := inSlab[j*SOURCE_CHUNK_SIZE : (j+1)*SOURCE_CHUNK_SIZE]
@@ -109,7 +109,7 @@ func DataPadding(inSlab []byte) []byte {
 // commpCar is a command to output the commp cid in a car.
 func commpCar(c *cli.Context) error {
 	if c.Args().Len() != 2 {
-		return xerrors.Errorf("a car location must be specified")
+		return xerrors.Errorf("CarPath and CarRoot must be specified!")
 	}
 
 	bs, err := blockstore.OpenReadOnly(c.Args().First())
@@ -128,17 +128,19 @@ func commpCar(c *cli.Context) error {
 	buf := bytes.Buffer{}
 	sc.Write(&buf)
 
-	count := buf.Len()
+	srcLen := buf.Len()
 
-	if mod := count % SOURCE_CHUNK_SIZE; mod != 0 {
-		// log.Info("total padlen: ", SOURCE_CHUNK_SIZE-mod, ", count: ", count)
+	// Padding source data
+	if mod := srcLen % SOURCE_CHUNK_SIZE; mod != 0 {
+		// log.Info("total padlen: ", SOURCE_CHUNK_SIZE-mod, ", srcLen: ", srcLen)
 		buf.Write(make([]byte, SOURCE_CHUNK_SIZE-mod))
-		count = buf.Len()
+		srcLen = buf.Len()
 	}
 
+	// Struce blocks from source data
 	idx := 0
-	blocks := make([]mt.DataBlock, count*CHUNK_NODES_NUM/SOURCE_CHUNK_SIZE)
-	for j := 0; j < count/SOURCE_CHUNK_SIZE; j++ {
+	blocks := make([]mt.DataBlock, srcLen*CHUNK_NODES_NUM/SOURCE_CHUNK_SIZE)
+	for j := 0; j < srcLen/SOURCE_CHUNK_SIZE; j++ {
 		nodes := DataPadding(buf.Bytes()[j*SOURCE_CHUNK_SIZE : (j+1)*SOURCE_CHUNK_SIZE])
 		for b := 0; b < CHUNK_NODES_NUM; b++ {
 			block := &DataBlock{
@@ -152,11 +154,11 @@ func commpCar(c *cli.Context) error {
 	config := &mt.Config{
 		HashFunc:           NewHashFunc,
 		DisableLeafHashing: true,
-		Mode:               mt.ModeProofGenAndTreeBuild,
+		Mode:               mt.ModeTreeBuild,
 	}
 	tree, _ := mt.New(config, blocks)
 
-	// Fetch the root hash of the tree
+	// Fetch the root hash from the tree
 	rawCommP := tree.Root
 	commCid, _ := commcid.DataCommitmentV1ToCID(rawCommP)
 
