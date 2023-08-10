@@ -4,6 +4,8 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"sort"
 	"sync"
 
@@ -41,7 +43,7 @@ type MetaService struct {
 	//hlk   sync.Mutex
 }
 
-func New(opts ...Option) *MetaService {
+func New() *MetaService {
 	return &MetaService{
 		root:     cid.Undef,
 		metas:    make(map[cid.Cid]*types.ChunkMeta, 0),
@@ -175,7 +177,9 @@ func (ms *MetaService) updateMeta(c cid.Cid, dstpath string, offset uint64) erro
 	return nil
 }
 
-func (ms *MetaService) PrintJson(path string) error {
+func (ms *MetaService) SaveMeta(path string, name string) error {
+	os.MkdirAll(path, 0o775)
+
 	meta := &types.Meta{
 		DagRoot: ms.root,
 		Metas:   make([]*types.ChunkMeta, 0),
@@ -190,5 +194,6 @@ func (ms *MetaService) PrintJson(path string) error {
 		return meta.Metas[i].DstOffset < meta.Metas[j].DstOffset
 	})
 
-	return utils.WriteJson(path+"/"+ms.root.String()+".json", "\t", meta)
+	metaPath := filepath.Join(path, name)
+	return utils.WriteJson(metaPath, "\t", meta)
 }

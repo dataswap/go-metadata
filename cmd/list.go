@@ -39,6 +39,7 @@ var listCmd = &cli.Command{
 	},
 }
 
+// Refer to the go-car code at https://github.com/ipld/go-car/blob/master/cmd/car/list.go for functional validation.
 // ListCar is a command to output the cids in a car.
 func ListCar(c *cli.Context) error {
 	var err error

@@ -42,6 +42,7 @@ var createCmd = &cli.Command{
 	},
 }
 
+// Refer to the boostx code at github.com/filecoin-project/boost/cmd/boostx/utils_cmd.go for functional validation.
 func CreateCar(cctx *cli.Context) error {
 	if cctx.Args().Len() != 2 {
 		return xerrors.Errorf("usage: generate-car <inputPath> <outputPath>")
@@ -102,7 +103,7 @@ func CreateCar(cctx *cli.Context) error {
 
 	log.Info("Payload CID: ", encoder.Encode(root))
 
-	return msrv.PrintJson(cctx.String("json"))
+	return msrv.SaveMeta(cctx.String("json"), root.String()+".json")
 }
 
 func CreateFilestore(ctx context.Context, srcPath string, dstPath string, msrv *metaservice.MetaService) (cid.Cid, error) {
