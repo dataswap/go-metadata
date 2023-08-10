@@ -44,7 +44,7 @@ func (t *DataBlock) Serialize() ([]byte, error) {
 	return t.Data, nil
 }
 
-// Commp hash generate function
+// SHA256 hash generate function for commp
 func NewHashFunc(data []byte) ([]byte, error) {
 	sha256Func := sha256simd.New()
 	sha256Func.Write(data)
@@ -53,7 +53,7 @@ func NewHashFunc(data []byte) ([]byte, error) {
 	return rst, nil
 }
 
-// Commp DataPadding function
+// SHA256 DataPadding function for commp
 func DataPadding(inSlab []byte) []byte {
 
 	quadsCount := len(inSlab) / SOURCE_CHUNK_SIZE
