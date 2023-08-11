@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"math/bits"
+	"os"
 	"path"
 
 	sha256simd "github.com/minio/sha256-simd"
@@ -214,6 +215,7 @@ func GenCommP(buf bytes.Buffer, cacheStart int, cacheLevels uint, cachePath stri
 			return nil, 0, err
 		}
 		cPath := path.Join(cachePath, hex.EncodeToString(tree.Root)+".cache")
+		os.MkdirAll(cachePath, 0o775)
 		if err = lc.StoreToFile(cPath); err != nil {
 			log.Error(err)
 			return nil, 0, err
