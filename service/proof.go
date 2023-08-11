@@ -225,12 +225,16 @@ func GenCommP(buf bytes.Buffer, cacheStart int, cacheLevels uint, cachePath stri
 	return tree.Root, paddedPieceSize, nil
 }
 
-func GenProofFromCache(leaf []byte, file string) (*mt.Proof, []byte, error) {
+func GenProofFromCache(leaf mt.DataBlock, file string) (*mt.Proof, []byte, error) {
 	lc, err := mt.NewLevelCacheFromFile(file)
 	if err != nil {
 		log.Error(err)
 		return nil, nil, nil
 	}
 
-	return lc.Prove(lc.Nodes[0][0], CommpHashConfig)
+	return lc.Prove(leaf, CommpHashConfig)
+}
+
+func Verify(leaf mt.DataBlock, proof *mt.Proof, root []byte) (bool, error) {
+	return mt.Verify(leaf, proof, root, CommpHashConfig)
 }

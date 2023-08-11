@@ -27,6 +27,7 @@ require (
 	github.com/multiformats/go-multibase v0.2.0
 	github.com/multiformats/go-multicodec v0.9.0
 	github.com/multiformats/go-multihash v0.2.3
+	github.com/opentracing/opentracing-go v1.2.0
 	github.com/txaty/go-merkletree v0.0.0-00010101000000-000000000000
 	github.com/urfave/cli/v2 v2.25.7
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2
@@ -81,7 +82,6 @@ require (
 	github.com/multiformats/go-multiaddr v0.9.0 // indirect
 	github.com/multiformats/go-multistream v0.4.1 // indirect
 	github.com/multiformats/go-varint v0.0.7 // indirect
-	github.com/opentracing/opentracing-go v1.2.0 // indirect
 	github.com/petar/GoLLRB v0.0.0-20210522233825-ae3b015fd3e9 // indirect
 	github.com/polydawn/refmt v0.89.0 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
@@ -107,4 +107,4 @@ require (
 
 replace github.com/ipfs/go-unixfs => github.com/dataswap/go-unixfs v0.4.7-0.20230808094829-1d219a8762da
 
-replace github.com/txaty/go-merkletree => github.com/dataswap/go-merkletree v0.1.16-0.20230811015213-32d6b6714c69
+replace github.com/txaty/go-merkletree => github.com/dataswap/go-merkletree v0.1.16-0.20230811085747-13ce2004c472
