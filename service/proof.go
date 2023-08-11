@@ -34,6 +34,7 @@ var (
 		HashFunc:           NewHashFunc,
 		DisableLeafHashing: true,
 		Mode:               mt.ModeTreeBuild,
+		RunInParallel:      true,
 	}
 )
 
