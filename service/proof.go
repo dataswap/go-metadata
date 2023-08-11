@@ -28,8 +28,13 @@ const (
 )
 
 var (
-	stackedNulPadding [MaxLayers][]byte
-	SumchunkCount     uint64
+	StackedNulPadding [MaxLayers][]byte
+	SumChunkCount     uint64
+	CommpHashConfig   = &mt.Config{
+		HashFunc:           NewHashFunc,
+		DisableLeafHashing: true,
+		Mode:               mt.ModeTreeBuild,
+	}
 )
 
 // DataBlock is a implementation of the DataBlock interface.
@@ -55,7 +60,7 @@ func NewHashFunc(data []byte) ([]byte, error) {
 func DataPadding(inSlab []byte) []byte {
 
 	chunkCount := len(inSlab) / SOURCE_CHUNK_SIZE
-	SumchunkCount += uint64(chunkCount)
+	SumChunkCount += uint64(chunkCount)
 	outSlab := make([]byte, chunkCount*SLAB_CHUNK_SIZE)
 
 	for j := 0; j < chunkCount; j++ {
@@ -108,13 +113,13 @@ func DataPadding(inSlab []byte) []byte {
 // initialize the nul padding stack
 func initStackedNulPadding() {
 	digest := sha256.New()
-	stackedNulPadding[0] = make([]byte, sha256.Size)
+	StackedNulPadding[0] = make([]byte, sha256.Size)
 	for i := uint(1); i < MaxLayers; i++ {
 		digest.Reset()
-		digest.Write(stackedNulPadding[i-1]) // yes, got to...
-		digest.Write(stackedNulPadding[i-1]) // ...do it twice
-		stackedNulPadding[i] = digest.Sum(make([]byte, 0, sha256.Size))
-		stackedNulPadding[i][31] &= 0x3F
+		digest.Write(StackedNulPadding[i-1]) // yes, got to...
+		digest.Write(StackedNulPadding[i-1]) // ...do it twice
+		StackedNulPadding[i] = digest.Sum(make([]byte, 0, sha256.Size))
+		StackedNulPadding[i][31] &= 0x3F
 	}
 }
 
@@ -155,7 +160,7 @@ func PadCommP(sourceCommP []byte, sourcePaddedSize, targetPaddedSize uint64) ([]
 	for ; s < t; s++ {
 		sha256Func.Reset()
 		sha256Func.Write(out)
-		sha256Func.Write(stackedNulPadding[s-5]) // account for 32byte chunks + off-by-one padding tower offset
+		sha256Func.Write(StackedNulPadding[s-5]) // account for 32byte chunks + off-by-one padding tower offset
 		out = sha256Func.Sum(out[:0])
 		out[31] &= 0x3F
 	}
@@ -195,14 +200,9 @@ func GenCommP(buf bytes.Buffer, cacheStart int, cacheLevels uint, cachePath stri
 		}
 	}
 
-	config := &mt.Config{
-		HashFunc:           NewHashFunc,
-		DisableLeafHashing: true,
-		Mode:               mt.ModeTreeBuild,
-	}
-	tree, _ := mt.NewWithPadding(config, blocks, stackedNulPadding)
+	tree, _ := mt.NewWithPadding(CommpHashConfig, blocks, StackedNulPadding)
 
-	paddedPieceSize := SumchunkCount * SLAB_CHUNK_SIZE
+	paddedPieceSize := SumChunkCount * SLAB_CHUNK_SIZE
 	// hacky round-up-to-next-pow2
 	if bits.OnesCount64(paddedPieceSize) != 1 {
 		paddedPieceSize = 1 << uint(64-bits.LeadingZeros64(paddedPieceSize))
@@ -223,4 +223,14 @@ func GenCommP(buf bytes.Buffer, cacheStart int, cacheLevels uint, cachePath stri
 	}
 
 	return tree.Root, paddedPieceSize, nil
+}
+
+func GenProofFromCache(leaf []byte, file string) (*mt.Proof, []byte, error) {
+	lc, err := mt.NewLevelCacheFromFile(file)
+	if err != nil {
+		log.Error(err)
+		return nil, nil, nil
+	}
+
+	return lc.Prove(lc.Nodes[0][0], CommpHashConfig)
 }
