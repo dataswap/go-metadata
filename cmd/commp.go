@@ -45,13 +45,13 @@ func commpCar(c *cli.Context) error {
 
 	buf := bytes.Buffer{}
 	sc.Write(&buf)
-	rawCommP, sectorSize, err := metaservice.GenCommP(buf)
+	rawCommP, pieceSize, err := metaservice.GenCommP(buf)
 	if err != nil {
 		return err
 	}
 	commCid, _ := commcid.DataCommitmentV1ToCID(rawCommP)
 
-	log.Info("\nCommP Cid: ", commCid.String(), "\nsectorSize: ", sectorSize)
+	log.Info("\nCommP Cid: ", commCid.String(), "\npieceSize: ", pieceSize)
 
 	return nil
 }

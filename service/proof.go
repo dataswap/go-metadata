@@ -23,7 +23,10 @@ const (
 	MaxPieceSize = uint64(1 << (MaxLayers + 5))
 )
 
-var stackedNulPadding [MaxLayers][]byte
+var (
+	stackedNulPadding [MaxLayers][]byte
+	SumchunkCount     uint64
+)
 
 // DataBlock is a implementation of the DataBlock interface.
 type DataBlock struct { // mt
@@ -48,6 +51,7 @@ func NewHashFunc(data []byte) ([]byte, error) {
 func DataPadding(inSlab []byte) []byte {
 
 	chunkCount := len(inSlab) / SOURCE_CHUNK_SIZE
+	SumchunkCount += uint64(chunkCount)
 	outSlab := make([]byte, chunkCount*SLAB_CHUNK_SIZE)
 
 	for j := 0; j < chunkCount; j++ {
@@ -194,5 +198,11 @@ func GenCommP(buf bytes.Buffer) ([]byte, uint64, error) {
 	}
 	tree, _ := mt.NewWithPadding(config, blocks, stackedNulPadding)
 
-	return tree.Root, 0, nil
+	paddedPieceSize := SumchunkCount * SLAB_CHUNK_SIZE
+	// hacky round-up-to-next-pow2
+	if bits.OnesCount64(paddedPieceSize) != 1 {
+		paddedPieceSize = 1 << uint(64-bits.LeadingZeros64(paddedPieceSize))
+	}
+
+	return tree.Root, paddedPieceSize, nil
 }
