@@ -235,6 +235,10 @@ func GenProofFromCache(leaf mt.DataBlock, file string) (*mt.Proof, []byte, error
 	return lc.Prove(leaf, CommpHashConfig)
 }
 
+func AppendProof(base *mt.Proof, sub mt.Proof) (*mt.Proof, error) {
+	return mt.AppendProof(base, sub)
+}
+
 func Verify(leaf mt.DataBlock, proof *mt.Proof, root []byte) (bool, error) {
 	return mt.Verify(leaf, proof, root, CommpHashConfig)
 }
