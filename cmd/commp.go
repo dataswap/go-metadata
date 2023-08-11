@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"strconv"
 
 	metaservice "github.com/dataswap/go-metadata/service"
 	commcid "github.com/filecoin-project/go-fil-commcid"
@@ -20,14 +21,14 @@ import (
 var commpCmd = &cli.Command{
 	Name:      "commp",
 	Usage:     "compute commp CID(PieceCID)",
-	ArgsUsage: "<inputCarPath> <inputCarRoot>",
+	ArgsUsage: "<inputCarPath> <inputCarRoot> <cacheStart> <cacheLevels> <cachePath>",
 	Action:    commpCar,
 }
 
 // commpCar is a command to output the commp cid in a car.
 func commpCar(c *cli.Context) error {
-	if c.Args().Len() != 2 {
-		return xerrors.Errorf("CarPath and CarRoot must be specified!")
+	if c.Args().Len() != 2 && c.Args().Len() != 5 {
+		return xerrors.Errorf("Args must be specified 2 or 5 nums!")
 	}
 
 	bs, err := blockstore.OpenReadOnly(c.Args().First())
@@ -40,12 +41,28 @@ func commpCar(c *cli.Context) error {
 		return err
 	}
 
+	cacheStart := -1
+	cacheLevels := 0
+	cachePath := ""
+	if c.Args().Len() == 5 {
+		cacheStart, err = strconv.Atoi(c.Args().Get(2))
+		if err != nil {
+			return err
+		}
+		cacheLevels, err = strconv.Atoi(c.Args().Get(3))
+		if err != nil {
+			return err
+		}
+		cachePath = c.Args().Get(4)
+	}
+
 	selector := allSelector()
 	sc := car.NewSelectiveCar(c.Context, bs, []car.Dag{{Root: cid, Selector: selector}})
 
 	buf := bytes.Buffer{}
 	sc.Write(&buf)
-	rawCommP, pieceSize, err := metaservice.GenCommP(buf)
+
+	rawCommP, pieceSize, err := metaservice.GenCommP(buf, cacheStart, uint(cacheLevels), cachePath)
 	if err != nil {
 		return err
 	}

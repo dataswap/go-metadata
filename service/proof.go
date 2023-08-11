@@ -3,9 +3,12 @@ package metaservice
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/hex"
 	"math/bits"
+	"path"
 
 	sha256simd "github.com/minio/sha256-simd"
+	"github.com/opentracing/opentracing-go/log"
 	"golang.org/x/xerrors"
 
 	mt "github.com/txaty/go-merkletree"
@@ -159,11 +162,11 @@ func PadCommP(sourceCommP []byte, sourcePaddedSize, targetPaddedSize uint64) ([]
 	return out, nil
 }
 
-func Digest(buf bytes.Buffer) ([]byte, uint64, error) {
-	return GenCommP(buf)
+func Digest(buf bytes.Buffer, cacheStart int, cacheLevels uint, cachePath string) ([]byte, uint64, error) {
+	return GenCommP(buf, cacheStart, cacheLevels, cachePath)
 }
 
-func GenCommP(buf bytes.Buffer) ([]byte, uint64, error) {
+func GenCommP(buf bytes.Buffer, cacheStart int, cacheLevels uint, cachePath string) ([]byte, uint64, error) {
 
 	// padding stack
 	initStackedNulPadding()
@@ -202,6 +205,19 @@ func GenCommP(buf bytes.Buffer) ([]byte, uint64, error) {
 	// hacky round-up-to-next-pow2
 	if bits.OnesCount64(paddedPieceSize) != 1 {
 		paddedPieceSize = 1 << uint(64-bits.LeadingZeros64(paddedPieceSize))
+	}
+
+	if cacheStart >= 0 {
+		lc, err := mt.NewLevelCache(tree, cacheStart, int(cacheLevels))
+		if err != nil {
+			log.Error(err)
+			return nil, 0, err
+		}
+		cPath := path.Join(cachePath, hex.EncodeToString(tree.Root)+".cache")
+		if err = lc.StoreToFile(cPath); err != nil {
+			log.Error(err)
+			return nil, 0, err
+		}
 	}
 
 	return tree.Root, paddedPieceSize, nil
