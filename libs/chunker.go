@@ -30,6 +30,7 @@ func NewSplitter(r io.Reader, size int64, srcPath string) EnhancedSplitter {
 	spl := chunker.NewSizeSplitter(r, size)
 	return &sliceSplitter{
 		Splitter: spl,
+		srcPath:  srcPath,
 		offset:   0,
 	}
 }
