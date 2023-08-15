@@ -26,6 +26,9 @@ const (
 	CAR_CHALLENGES_RATE = (1 / 1000)
 	CAR_32GIB_SIZE      = uint64(1 << 35)
 
+	CACHE_SUFFIX   = ".cache"
+	CACHE_T_SUFFIX = ".tcache"
+
 	// MaxLayers is the current maximum height of the rust-fil-proofs proving tree.
 	MaxLayers = uint(31) // result of log2( 64 GiB / 32 )
 	// MaxPieceSize is the current maximum size of the rust-fil-proofs proving tree.
@@ -235,7 +238,7 @@ func GenCommP(buf bytes.Buffer, cacheStart int, cacheLevels uint, cachePath stri
 			log.Error(err)
 			return nil, 0, err
 		}
-		cPath := path.Join(cachePath, hex.EncodeToString(tree.Root)+".cache")
+		cPath := path.Join(cachePath, hex.EncodeToString(tree.Root)+CACHE_SUFFIX)
 		os.MkdirAll(cachePath, 0o775)
 		if err = lc.StoreToFile(cPath); err != nil {
 			log.Error(err)
@@ -244,6 +247,29 @@ func GenCommP(buf bytes.Buffer, cacheStart int, cacheLevels uint, cachePath stri
 	}
 
 	return tree.Root, paddedPieceSize, nil
+}
+
+// Generate commPs Merkle-Tree to .tcache
+func GenTopMerkleTreeToCache(leafs []mt.DataBlock, cachePath string) ([]byte, error) {
+	tree, err := mt.NewWithPadding(CommpHashConfig, leafs, StackedNulPadding)
+	if err != nil {
+		log.Error(err)
+		return nil, err
+	}
+
+	lc, err := mt.NewLevelCache(tree, 0, tree.Depth)
+	if err != nil {
+		log.Error(err)
+		return nil, err
+	}
+	cPath := path.Join(cachePath, hex.EncodeToString(tree.Root)+CACHE_T_SUFFIX)
+	os.MkdirAll(cachePath, 0o775)
+	if err = lc.StoreToFile(cPath); err != nil {
+		log.Error(err)
+		return nil, err
+	}
+
+	return tree.Root, nil
 }
 
 // GenChallenges is generate the challenges car nodes
