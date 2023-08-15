@@ -3,10 +3,12 @@ package metaservice
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"math/bits"
 	"os"
 	"path"
+	"sync"
 
 	sha256simd "github.com/minio/sha256-simd"
 	"github.com/opentracing/opentracing-go/log"
@@ -20,6 +22,9 @@ const (
 	SLAB_CHUNK_SIZE   = 128
 	NODE_SIZE         = 32
 	CHUNK_NODES_NUM   = 4
+
+	CAR_CHALLENGES_RATE = (1 / 1000)
+	CAR_32GIB_SIZE      = uint64(1 << 35)
 
 	// MaxLayers is the current maximum height of the rust-fil-proofs proving tree.
 	MaxLayers = uint(31) // result of log2( 64 GiB / 32 )
@@ -36,6 +41,8 @@ var (
 		Mode:               mt.ModeTreeBuild,
 		RunInParallel:      true,
 	}
+
+	Once sync.Once
 )
 
 // DataBlock is a implementation of the DataBlock interface.
@@ -124,6 +131,42 @@ func initStackedNulPadding() {
 	}
 }
 
+func bufferToDataBlocks(buf bytes.Buffer) []mt.DataBlock {
+	// padding stack
+	Once.Do(initStackedNulPadding)
+
+	srcLen := buf.Len()
+
+	// Padding source data
+	if mod := srcLen % SOURCE_CHUNK_SIZE; mod != 0 {
+		// log.Info("total padlen: ", SOURCE_CHUNK_SIZE-mod, ", srcLen: ", srcLen)
+		buf.Write(make([]byte, SOURCE_CHUNK_SIZE-mod))
+		srcLen = buf.Len()
+	}
+
+	// Struce blocks from source data
+	idx := 0
+	blocks := make([]mt.DataBlock, srcLen*CHUNK_NODES_NUM/SOURCE_CHUNK_SIZE)
+	for j := 0; j < srcLen/SOURCE_CHUNK_SIZE; j++ {
+		nodes := DataPadding(buf.Bytes()[j*SOURCE_CHUNK_SIZE : (j+1)*SOURCE_CHUNK_SIZE])
+		for b := 0; b < CHUNK_NODES_NUM; b++ {
+			block := &DataBlock{
+				Data: nodes[b*NODE_SIZE : (b+1)*NODE_SIZE],
+			}
+			blocks[idx] = block
+			idx++
+		}
+	}
+
+	return blocks
+}
+
+func bytesToDataBlocks(bt []byte) mt.DataBlock {
+	return &DataBlock{
+		Data: bt[0:NODE_SIZE],
+	}
+}
+
 // PadCommP is experimental, do not use it.
 func PadCommP(sourceCommP []byte, sourcePaddedSize, targetPaddedSize uint64) ([]byte, error) {
 
@@ -169,38 +212,15 @@ func PadCommP(sourceCommP []byte, sourcePaddedSize, targetPaddedSize uint64) ([]
 	return out, nil
 }
 
+// Digest is GenCommP export, compatible generate-car
 func Digest(buf bytes.Buffer, cacheStart int, cacheLevels uint, cachePath string) ([]byte, uint64, error) {
 	return GenCommP(buf, cacheStart, cacheLevels, cachePath)
 }
 
+// GenCommP is the commP generate
 func GenCommP(buf bytes.Buffer, cacheStart int, cacheLevels uint, cachePath string) ([]byte, uint64, error) {
 
-	// padding stack
-	initStackedNulPadding()
-
-	srcLen := buf.Len()
-
-	// Padding source data
-	if mod := srcLen % SOURCE_CHUNK_SIZE; mod != 0 {
-		// log.Info("total padlen: ", SOURCE_CHUNK_SIZE-mod, ", srcLen: ", srcLen)
-		buf.Write(make([]byte, SOURCE_CHUNK_SIZE-mod))
-		srcLen = buf.Len()
-	}
-
-	// Struce blocks from source data
-	idx := 0
-	blocks := make([]mt.DataBlock, srcLen*CHUNK_NODES_NUM/SOURCE_CHUNK_SIZE)
-	for j := 0; j < srcLen/SOURCE_CHUNK_SIZE; j++ {
-		nodes := DataPadding(buf.Bytes()[j*SOURCE_CHUNK_SIZE : (j+1)*SOURCE_CHUNK_SIZE])
-		for b := 0; b < CHUNK_NODES_NUM; b++ {
-			block := &DataBlock{
-				Data: nodes[b*NODE_SIZE : (b+1)*NODE_SIZE],
-			}
-			blocks[idx] = block
-			idx++
-		}
-	}
-
+	blocks := bufferToDataBlocks(buf)
 	tree, _ := mt.NewWithPadding(CommpHashConfig, blocks, StackedNulPadding)
 
 	paddedPieceSize := SumChunkCount * SLAB_CHUNK_SIZE
@@ -226,6 +246,83 @@ func GenCommP(buf bytes.Buffer, cacheStart int, cacheLevels uint, cachePath stri
 	return tree.Root, paddedPieceSize, nil
 }
 
+// GenChallenges is generate the challenges car nodes
+func GenChallenges(randomness uint64, carSize uint64, dataSize uint64) (map[uint64][]uint64, error) {
+	carChallenges := make(map[uint64][]uint64)
+
+	carChallengesCount := dataSize % carSize * CAR_CHALLENGES_RATE
+	leafChallengeCount := uint32(0)
+	if carSize >= CAR_32GIB_SIZE {
+		leafChallengeCount = 172
+	} else {
+		leafChallengeCount = 2
+	}
+
+	for i := uint64(0); i < carChallengesCount; i++ {
+		carIndex := GenCarChallenge(randomness, i, dataSize, carSize)
+		for j := uint32(0); j < leafChallengeCount; j++ {
+			carChallenges[carIndex] = append(carChallenges[carIndex], GenLeafChallenge(randomness, carIndex, j, carSize))
+		}
+	}
+
+	return carChallenges, nil
+}
+
+func GenCarChallenge(randomness uint64, carChallengeIndex uint64, dataSize uint64, carSize uint64) uint64 {
+	sha256Func := sha256simd.New()
+
+	bytes := make([]byte, 8)
+	binary.LittleEndian.PutUint64(bytes, randomness)
+	sha256Func.Write(bytes)
+
+	bytes = bytes[:0]
+	binary.LittleEndian.PutUint64(bytes, carChallengeIndex)
+	sha256Func.Write(bytes)
+
+	hash := sha256Func.Sum(nil)
+
+	leaf_challenge := binary.LittleEndian.Uint64(hash[:8])
+	return leaf_challenge % dataSize / carSize
+}
+
+func GenLeafChallenge(randomness uint64, carIndex uint64, leafChallengeIndex uint32, carSize uint64) uint64 {
+	sha256Func := sha256simd.New()
+
+	bytes := make([]byte, 8)
+	binary.LittleEndian.PutUint64(bytes, randomness)
+	sha256Func.Write(bytes)
+
+	bytes = bytes[:0]
+	binary.LittleEndian.PutUint64(bytes, carIndex)
+	sha256Func.Write(bytes)
+
+	bytes = bytes[:0]
+	binary.LittleEndian.PutUint32(bytes, leafChallengeIndex)
+	sha256Func.Write(bytes)
+
+	hash := sha256Func.Sum(nil)
+
+	leaf_challenge := binary.LittleEndian.Uint64(hash[:8])
+	return leaf_challenge % carSize / NODE_SIZE
+}
+
+func GenProofs(buf bytes.Buffer, leafs []mt.DataBlock) (*[]mt.Proof, []byte, error) {
+	blocks := bufferToDataBlocks(buf)
+
+	tree, err := mt.NewWithPadding(CommpHashConfig, blocks, StackedNulPadding)
+	if err != nil {
+		log.Error(err)
+		return nil, nil, err
+	}
+
+	proofs, err := tree.MultiProof(leafs)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return proofs, tree.Root, nil
+}
+
 func GenProofFromCache(leaf mt.DataBlock, file string) (*mt.Proof, []byte, error) {
 	lc, err := mt.NewLevelCacheFromFile(file)
 	if err != nil {
@@ -240,6 +337,33 @@ func AppendProof(base *mt.Proof, sub mt.Proof) (*mt.Proof, error) {
 	return mt.AppendProof(base, sub)
 }
 
+// func Proof(randomness uint64, carSize uint64, dataSize uint64, cachePath string) (*[]mt.Proof, error) {
+// 	// 1. Generate challenge nodes
+// 	carChallenges, err := GenChallenges(randomness, carSize, dataSize)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+
+// 	// 2. Get challenge nodes data
+
+// 	// 3. Generate car chunk proofs
+// 	carProofs, root, err := GenProofs(buf, leafs)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	// 4. Generate cache proofs
+// 	cacheProof, cRoot, err := GenProofFromCache(bytesToDataBlocks(root), cachePath)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	// 5. Generate top proofs
+// 	topProof, tRoot, err := GenProofFromCache(bytesToDataBlocks(cRoot), cachePath)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// }
+
+// Verify Proof
 func Verify(leaf mt.DataBlock, proof *mt.Proof, root []byte) (bool, error) {
 	return mt.Verify(leaf, proof, root, CommpHashConfig)
 }
