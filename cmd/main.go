@@ -19,6 +19,8 @@ func main() {
 			createCmd,
 			listCmd,
 			commpCmd,
+			proofCmd,
+			verifyCmd,
 		},
 	}
 
