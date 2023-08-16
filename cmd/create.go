@@ -45,7 +45,7 @@ var createCmd = &cli.Command{
 // Refer to the boostx code at github.com/filecoin-project/boost/cmd/boostx/utils_cmd.go for functional validation.
 func CreateCar(cctx *cli.Context) error {
 	if cctx.Args().Len() != 2 {
-		return xerrors.Errorf("usage: generate-car <inputPath> <outputPath>")
+		return xerrors.Errorf("usage: create <inputPath> <outputPath>")
 	}
 
 	inPath := cctx.Args().First()
