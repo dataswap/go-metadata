@@ -21,6 +21,7 @@ func main() {
 			commpCmd,
 			proofCmd,
 			verifyCmd,
+			createChunksCmd,
 		},
 	}
 
