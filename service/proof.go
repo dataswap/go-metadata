@@ -349,8 +349,9 @@ func AppendProof(base *mt.Proof, sub mt.Proof) (*mt.Proof, error) {
 	return mt.AppendProof(base, sub)
 }
 
-//### export functions
+// ------------------------------------------------------------
 
+// ### export functions
 // PadCommP is experimental, do not use it.
 func PadCommP(sourceCommP []byte, sourcePaddedSize, targetPaddedSize uint64) ([]byte, error) {
 
@@ -449,7 +450,9 @@ func GenCommP(buf bytes.Buffer, cacheStart int, cacheLevels uint, cachePath stri
 }
 
 // Generate commPs Merkle-Tree root to .tcache, proofs{rootHash, leafHashes[]}
-func GenTopProofToCache(filePath string, cachePath string) ([]byte, error) {
+// filePath: commPs[]
+// cachePath: store to file path
+func GenTopProof(filePath string, cachePath string) ([]byte, error) {
 	commPs, err := loadDeduplicateCommPFromCache(filePath)
 	if err != nil {
 		log.Error(err)
