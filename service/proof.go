@@ -7,11 +7,13 @@ import (
 	"encoding/gob"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"math/bits"
 	"os"
 	"path"
 	"reflect"
 	"sync"
+	"syscall"
 
 	sha256simd "github.com/minio/sha256-simd"
 	"github.com/opentracing/opentracing-go/log"
@@ -149,6 +151,31 @@ func initStackedNulPadding() {
 // ------------------------------------------------------------
 
 //### internal functions
+
+type FileLock struct {
+	lockFile *os.File
+}
+
+func NewFileLock(filePath string) (*FileLock, error) {
+	lockFilePath := filePath + ".lock"
+	lockFile, err := os.OpenFile(lockFilePath, os.O_CREATE|os.O_RDWR, 0644)
+	if err != nil {
+		return nil, err
+	}
+	return &FileLock{lockFile: lockFile}, nil
+}
+
+func (f *FileLock) Lock() error {
+	return syscall.Flock(int(f.lockFile.Fd()), syscall.LOCK_EX)
+}
+
+func (f *FileLock) Unlock() error {
+	return syscall.Flock(int(f.lockFile.Fd()), syscall.LOCK_UN)
+}
+
+func (f *FileLock) Close() {
+	f.lockFile.Close()
+}
 
 func bufferToDataBlocks(buf bytes.Buffer) []mt.DataBlock {
 	// padding stack
@@ -405,6 +432,19 @@ func SaveCommP(rawCommP []byte, cachePath string) error {
 		return err
 	}
 	defer file.Close()
+
+	lock, err := NewFileLock(cachePath)
+	if err != nil {
+		fmt.Println("Lock File Error:", err)
+		return err
+	}
+	defer lock.Close()
+
+	if err := lock.Lock(); err != nil {
+		fmt.Println("Lock Error:", err)
+		return err
+	}
+	defer lock.Unlock()
 
 	_, err = file.Write(rawCommP)
 	if err != nil {
