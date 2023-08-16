@@ -22,6 +22,7 @@ func main() {
 			proofCmd,
 			verifyCmd,
 			tproofCmd,
+			createChunksCmd,
 		},
 	}
 

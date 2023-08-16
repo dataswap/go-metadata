@@ -36,8 +36,14 @@ var createCmd = &cli.Command{
 	Action:    CreateCar,
 	Flags: []cli.Flag{
 		&cli.StringFlag{
-			Name:  "json",
-			Usage: "The meta file to write to",
+			Name:     "json",
+			Usage:    "The meta file to write to",
+			Required: true,
+		},
+		&cli.StringFlag{
+			Name:     "parent",
+			Usage:    "The parent path",
+			Required: true,
 		},
 	},
 }
@@ -45,7 +51,7 @@ var createCmd = &cli.Command{
 // Refer to the boostx code at github.com/filecoin-project/boost/cmd/boostx/utils_cmd.go for functional validation.
 func CreateCar(cctx *cli.Context) error {
 	if cctx.Args().Len() != 2 {
-		return xerrors.Errorf("usage: generate-car <inputPath> <outputPath>")
+		return xerrors.Errorf("usage: create <inputPath> <outputPath>")
 	}
 
 	inPath := cctx.Args().First()
@@ -61,7 +67,7 @@ func CreateCar(cctx *cli.Context) error {
 	defer os.Remove(tmp) //nolint:errcheck
 	msrv := metaservice.New()
 	// generate and import the UnixFS DAG into a filestore (positional reference) CAR.
-	root, err := CreateFilestore(cctx.Context, inPath, tmp, msrv)
+	root, err := CreateFilestore(cctx.Context, inPath, tmp, msrv, cctx.String("parent"))
 	if err != nil {
 		return xerrors.Errorf("failed to import file using unixfs: %w", err)
 	}
@@ -106,7 +112,7 @@ func CreateCar(cctx *cli.Context) error {
 	return msrv.SaveMeta(cctx.String("json"), root.String()+".json")
 }
 
-func CreateFilestore(ctx context.Context, srcPath string, dstPath string, msrv *metaservice.MetaService) (cid.Cid, error) {
+func CreateFilestore(ctx context.Context, srcPath string, dstPath string, msrv *metaservice.MetaService, parent string) (cid.Cid, error) {
 	src, err := os.Open(srcPath)
 	if err != nil {
 		return cid.Undef, xerrors.Errorf("failed to open input file: %w", err)
@@ -139,7 +145,7 @@ func CreateFilestore(ctx context.Context, srcPath string, dstPath string, msrv *
 		return cid.Undef, xerrors.Errorf("failed to create temporary filestore: %w", err)
 	}
 
-	finalRoot1, err := Build(ctx, file, fstore, true, srcPath, nil)
+	finalRoot1, err := Build(ctx, file, fstore, true, srcPath, nil, parent)
 	if err != nil {
 		_ = fstore.Close()
 		return cid.Undef, xerrors.Errorf("failed to import file to store to compute root: %w", err)
@@ -161,7 +167,7 @@ func CreateFilestore(ctx context.Context, srcPath string, dstPath string, msrv *
 		return cid.Undef, xerrors.Errorf("failed to rewind file: %w", err)
 	}
 
-	finalRoot2, err := Build(ctx, file, bs, true, srcPath, msrv)
+	finalRoot2, err := Build(ctx, file, bs, true, srcPath, msrv, parent)
 	if err != nil {
 		_ = bs.Close()
 		return cid.Undef, xerrors.Errorf("failed to create UnixFS DAG with carv2 blockstore: %w", err)
@@ -180,7 +186,7 @@ func CreateFilestore(ctx context.Context, srcPath string, dstPath string, msrv *
 
 const UnixfsLinksPerLevel = 1024
 
-func Build(ctx context.Context, reader io.Reader, into bstore.Blockstore, filestore bool, srcPath string, msrv *metaservice.MetaService) (cid.Cid, error) {
+func Build(ctx context.Context, reader io.Reader, into bstore.Blockstore, filestore bool, srcPath string, msrv *metaservice.MetaService, parent string) (cid.Cid, error) {
 	b, err := CidBuilder()
 	if err != nil {
 		return cid.Undef, err
@@ -198,7 +204,7 @@ func Build(ctx context.Context, reader io.Reader, into bstore.Blockstore, filest
 		NoCopy:     filestore,
 	}
 
-	spl := libs.NewSplitter(reader, int64(libs.UnixfsChunkSize), srcPath)
+	spl, err := libs.NewSplitter(reader, int64(libs.UnixfsChunkSize), srcPath, parent)
 	if msrv != nil {
 		params.Dagserv = msrv.GenDagService(bufdag)
 		db, err = msrv.GenHelper(&params, spl)
