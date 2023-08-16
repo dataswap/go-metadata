@@ -24,7 +24,7 @@ const (
 	NODE_SIZE         = 32
 	CHUNK_NODES_NUM   = 4
 
-	CAR_CHALLENGES_RATE = (1 / 1000)
+	CAR_CHALLENGES_RATE = float64(0.001)
 	CAR_32GIB_SIZE      = uint64(1 << 35)
 	CAR_2MIB_CHUNK_SIZE = uint64(1 << 21)
 
@@ -305,10 +305,10 @@ func LeafChallengeCount(carSize uint64) uint32 {
 func GenChallenges(randomness uint64, carSize uint64, dataSize uint64) (map[uint64][]uint64, error) {
 	carChallenges := make(map[uint64][]uint64)
 
-	carChallengesCount := dataSize % carSize * CAR_CHALLENGES_RATE
+	carChallengesCount := float64(dataSize%carSize) * CAR_CHALLENGES_RATE
 	leafChallengeCount := LeafChallengeCount(carSize)
 
-	for i := uint64(0); i < carChallengesCount; i++ {
+	for i := uint64(0); i < uint64(carChallengesCount); i++ {
 		carIndex := GenCarChallenge(randomness, i, dataSize, carSize)
 		for j := uint32(0); j < leafChallengeCount; j++ {
 			carChallenges[carIndex] = append(carChallenges[carIndex], GenLeafChallenge(randomness, carIndex, j, carSize))
