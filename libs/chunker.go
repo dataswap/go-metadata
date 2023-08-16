@@ -2,6 +2,7 @@ package libs
 
 import (
 	"io"
+	"path/filepath"
 
 	chunker "github.com/ipfs/go-ipfs-chunker"
 )
@@ -26,13 +27,17 @@ type sliceSplitter struct {
 	offset  uint64
 }
 
-func NewSplitter(r io.Reader, size int64, srcPath string) EnhancedSplitter {
+func NewSplitter(r io.Reader, size int64, srcPath string, parentPath string) (EnhancedSplitter, error) {
+	path, err := filepath.Rel(filepath.Clean(parentPath), filepath.Clean(srcPath))
+	if err != nil {
+		return nil, err
+	}
 	spl := chunker.NewSizeSplitter(r, size)
 	return &sliceSplitter{
 		Splitter: spl,
-		srcPath:  srcPath,
+		srcPath:  path,
 		offset:   0,
-	}
+	}, nil
 }
 
 func (ss *sliceSplitter) NextBytesWithMeta() ([]byte, *SliceMeta, error) {

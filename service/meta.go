@@ -13,9 +13,11 @@ import (
 	"github.com/dataswap/go-metadata/types"
 	"github.com/dataswap/go-metadata/utils"
 	"github.com/ipfs/go-cid"
+	"github.com/ipfs/go-merkledag"
 	helpers "github.com/ipfs/go-unixfs/importer/helpers"
 	"github.com/ipld/go-car/util"
 
+	"github.com/data-preservation-programs/singularity/pack"
 	pi "github.com/ipfs/go-ipfs-posinfo"
 	ipld "github.com/ipfs/go-ipld-format"
 	dag "github.com/ipfs/go-merkledag"
@@ -23,32 +25,22 @@ import (
 	pb "github.com/ipfs/go-unixfs/pb"
 )
 
-//const (
-//	DefaultMaxCommpBuffSizePad  = uint64(1 << 20)
-//	DefaultMaxCommpBuffSize     = uint64(DefaultMaxCommpBuffSizePad - (DefaultMaxCommpBuffSizePad / 128))
-//	DefaultMerkleLeavesNodeSize = 127 * 256 * 32 * 2
-//)
-
-//var DefaultMerkletreeStartNumberOfLayers = uint(math.Log2(float64(DefaultMerkleLeavesNodeSize)/32) + 1)
-
 type MetaService struct {
+	opts     *Options
 	metas    map[cid.Cid]*types.ChunkMeta // chunks
 	rawSizes map[cid.Cid]uint64           // chunks raw size
 	lk       sync.Mutex
 
 	root cid.Cid
-
-	//calc  *commp.Calc             //commp calc
-	//hashs map[uint]map[int][]byte //layer -> node index -> hash
-	//hlk   sync.Mutex
 }
 
-func New() *MetaService {
+func New(opts ...Option) *MetaService {
+	options := newOptions(opts...)
 	return &MetaService{
+		opts:     options,
 		root:     cid.Undef,
 		metas:    make(map[cid.Cid]*types.ChunkMeta, 0),
 		rawSizes: make(map[cid.Cid]uint64, 0),
-		//hashs:    make(map[uint]map[int][]byte),
 	}
 }
 
@@ -93,9 +85,11 @@ func (ms *MetaService) nodeAction(node ipld.Node) *types.ChunkMeta {
 	cm.Cid = node.Cid()
 	cm.Links = node.Links()
 	cm.ChunkSize = util.LdSize(node.Cid().Bytes(), node.RawData())
-	//if stat, err := node.Stat(); err == nil {
-	//	fmt.Println("hash:", stat.Hash, " link num:", stat.NumLinks, " umulativeSize ", stat.CumulativeSize, " block size", stat.BlockSize, " data size:", stat.DataSize)
-	//}
+
+	if stat, err := node.Stat(); err == nil {
+		fmt.Println("hash:", stat.Hash, " link num:", stat.NumLinks, " umulativeSize ", stat.CumulativeSize, " block size", stat.BlockSize, " data size:", stat.DataSize, " raw data size:", len(node.RawData()), " ")
+		cm.BlockSize = uint64(stat.BlockSize)
+	}
 	if nt, err := ms.getNodeType(node); err == nil {
 		cm.NodeType = nt
 	} else {
@@ -114,6 +108,7 @@ func (ms *MetaService) GenHelper(params *helpers.DagBuilderParams, spl libs.Enha
 	if err != nil {
 		return nil, err
 	}
+
 	return db, nil
 }
 
@@ -196,4 +191,162 @@ func (ms *MetaService) SaveMeta(path string, name string) error {
 
 	metaPath := filepath.Join(path, name)
 	return utils.WriteJson(metaPath, "\t", meta)
+}
+
+func (ms *MetaService) LoadMeta(path string) error {
+	var meta types.Meta
+	err := utils.ReadJson(path, &meta)
+	if err != nil {
+		return err
+	}
+	ms.root = meta.DagRoot
+	for _, v := range meta.Metas {
+		ms.metas[v.Cid] = v
+	}
+	return nil
+}
+
+func (ms *MetaService) verifyMetasContinuity(metas []*types.ChunkMeta) error {
+	var nextStart uint64
+	for i, v := range metas {
+		if i == 0 {
+			nextStart = v.DstOffset
+		}
+		if nextStart != v.DstOffset {
+			return fmt.Errorf("The chunk are damaged and are not continuous.")
+		}
+		nextStart = nextStart + v.ChunkSize
+	}
+	return nil
+}
+
+func (ms *MetaService) GetAllChunkMetas() ([]*types.ChunkMeta, error) {
+	var metas []*types.ChunkMeta
+
+	for _, v := range ms.metas {
+		metas = append(metas, v)
+	}
+
+	sort.Slice(metas, func(i, j int) bool {
+		return metas[i].DstOffset < metas[j].DstOffset
+	})
+	err := ms.verifyMetasContinuity(metas)
+	return metas, err
+}
+
+func (ms *MetaService) GetChunkMetas(dstOffset uint64, dstSize uint64) ([]*types.ChunkMeta, error) {
+	chunkStart := dstOffset
+	chunkEnd := dstOffset + dstSize
+	var metas []*types.ChunkMeta
+
+	for _, v := range ms.metas {
+		start, end := v.ChunkRange()
+		if chunkStart <= start && chunkEnd >= start && chunkEnd <= end ||
+			chunkStart >= start && chunkStart <= end && chunkEnd >= end ||
+			chunkStart <= start && chunkEnd >= end ||
+			chunkStart >= start && chunkEnd <= end {
+			metas = append(metas, v)
+		}
+	}
+
+	sort.Slice(metas, func(i, j int) bool {
+		return metas[i].DstOffset < metas[j].DstOffset
+	})
+
+	err := ms.verifyMetasContinuity(metas)
+
+	return metas, err
+}
+
+func (ms *MetaService) GenerateChunksFromMeta(path string, srcParent string, metas []*types.ChunkMeta) error {
+	cidBuilder, err := merkledag.PrefixForCidVersion(1)
+	if err != nil {
+		return err
+	}
+
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	pack.WriteCarHeader(file, ms.root)
+
+	for _, meta := range metas {
+		var err error
+		var node ipld.Node
+		if meta.SrcPath != "" {
+			node, err = ms.GenerateNodeFromSource(path, srcParent, meta, cidBuilder)
+			if err != nil {
+				return err
+			}
+		} else {
+			node, err = ms.GenerateNodeNoData(meta, cidBuilder)
+			if err != nil {
+				return err
+			}
+		}
+
+		if node.Cid().String() != meta.Cid.String() {
+			return fmt.Errorf("The generated CID for the node is not consistent with the metadata record.")
+		}
+
+		//fmt.Println("gen file cid:", node.Cid().String(), " meta cid:", meta.Cid.String())
+
+		_, err = file.Seek(int64(meta.DstOffset), 0)
+		if err != nil {
+			return err
+		}
+		pack.WriteCarBlock(file, node)
+	}
+
+	return nil
+}
+
+func (ms *MetaService) GenerateNodeNoData(meta *types.ChunkMeta, cidBuilder cid.Builder) (ipld.Node, error) {
+	fsNode := helpers.NewFSNodeOverDag(meta.NodeType, cidBuilder)
+	for _, link := range meta.Links {
+		cm, ok := ms.metas[link.Cid]
+		if !ok {
+			return nil, fmt.Errorf("cant find meta ,cid:%s", link.Cid.String())
+		}
+		var blockSize uint64
+		if meta.NodeType == pb.Data_File {
+			blockSize = cm.Size
+		} else {
+			blockSize = cm.BlockSize
+		}
+		if err := fsNode.AddLinkChildToFsNode(link, blockSize); err != nil {
+			return nil, err
+		}
+		//fmt.Println("AddChildLink name:", link.Name, " cid:", link.Cid.String(), " file size:", blockSize, " meta")
+	}
+	node, err := fsNode.Commit()
+	if err != nil {
+		return nil, err
+	}
+	return node, nil
+}
+
+func (ms *MetaService) GenerateNodeFromSource(path string, srcParent string, meta *types.ChunkMeta, cidBuilder cid.Builder) (ipld.Node, error) {
+	srcPath := filepath.Join(srcParent, meta.SrcPath)
+	sfile, err := os.Open(srcPath)
+	if err != nil {
+		return nil, err
+	}
+	defer sfile.Close()
+	data := make([]byte, meta.Size)
+
+	if _, err := sfile.ReadAt(data, int64(meta.SrcOffset)); err != nil {
+		return nil, err
+	}
+
+	node, err := helpers.NewLeafNode(data, meta.NodeType, cidBuilder, ms.opts.rawLeaves)
+	if err != nil {
+		return nil, err
+	}
+
+	node = helpers.ProcessFileStore(node, meta.Size)
+
+	return node, nil
 }

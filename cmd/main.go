@@ -19,6 +19,7 @@ func main() {
 			createCmd,
 			listCmd,
 			commpCmd,
+			createChunksCmd,
 		},
 	}
 
