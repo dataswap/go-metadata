@@ -12,6 +12,7 @@ import (
 	"github.com/dataswap/go-metadata/libs"
 	"github.com/dataswap/go-metadata/types"
 	"github.com/dataswap/go-metadata/utils"
+	commcid "github.com/filecoin-project/go-fil-commcid"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-merkledag"
 	helpers "github.com/ipfs/go-unixfs/importer/helpers"
@@ -349,4 +350,55 @@ func (ms *MetaService) GenerateNodeFromSource(path string, srcParent string, met
 	node = helpers.ProcessFileStore(node, meta.Size)
 
 	return node, nil
+}
+
+func (ms *MetaService) MetaPath() string {
+	return ms.opts.metaPath
+}
+
+func (ms *MetaService) SourceParentPath() string {
+	return ms.opts.sourceParentPath
+}
+
+type GetChunksHandle func(hash []byte, offset uint64, size uint64, getms func() *MetaService) ([]byte, error)
+
+func GetChallengeChunk(hash []byte, offset uint64, size uint64, getms func() *MetaService) ([]byte, error) {
+	commCid, err := commcid.DataCommitmentV1ToCID(hash)
+	if err != nil {
+		return nil, err
+	}
+
+	ms := getms()
+	metaPath := filepath.Join(ms.MetaPath(), commCid.String()+".json")
+	if !utils.PathExists(metaPath) {
+		return nil, fmt.Errorf("cant find meta file:%s", metaPath)
+	}
+
+	metas, err := ms.GetChunkMetas(offset, size)
+	if err != nil {
+		return nil, err
+	}
+
+	tempDir, err := os.MkdirTemp("", "")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(tempDir)
+
+	targetPath := filepath.Join(tempDir, commCid.String()+".car")
+
+	ms.GenerateChunksFromMeta(targetPath, ms.SourceParentPath(), metas)
+
+	file, err := os.Open(targetPath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	buf := make([]byte, size)
+	if _, err := file.ReadAt(buf, int64(size)); err != nil {
+		return nil, err
+	}
+
+	return buf, nil
 }
