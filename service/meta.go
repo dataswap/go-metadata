@@ -87,7 +87,7 @@ func (ms *MetaService) nodeAction(node ipld.Node) *types.ChunkMeta {
 	cm.ChunkSize = util.LdSize(node.Cid().Bytes(), node.RawData())
 
 	if stat, err := node.Stat(); err == nil {
-		fmt.Println("hash:", stat.Hash, " link num:", stat.NumLinks, " umulativeSize ", stat.CumulativeSize, " block size", stat.BlockSize, " data size:", stat.DataSize, " raw data size:", len(node.RawData()), " ")
+		//fmt.Println("hash:", stat.Hash, " link num:", stat.NumLinks, " umulativeSize ", stat.CumulativeSize, " block size", stat.BlockSize, " data size:", stat.DataSize, " raw data size:", len(node.RawData()), " ")
 		cm.BlockSize = uint64(stat.BlockSize)
 	}
 	if nt, err := ms.getNodeType(node); err == nil {
