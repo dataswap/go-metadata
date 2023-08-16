@@ -166,10 +166,21 @@ func bufferToDataBlocks(buf bytes.Buffer) []mt.DataBlock {
 	return blocks
 }
 
-func bytesToDataBlocks(bt []byte) mt.DataBlock {
+func bytesToDataBlock(bt []byte) mt.DataBlock {
 	return &DataBlock{
 		Data: bt[0:NODE_SIZE],
 	}
+}
+
+func bytesToDataBlocks(bt [][]byte) []mt.DataBlock {
+	blocks := make([]mt.DataBlock, len(bt)*NODE_SIZE)
+	for i, data := range bt {
+		blocks[i] = &DataBlock{
+			Data: data[0:NODE_SIZE],
+		}
+	}
+
+	return blocks
 }
 
 // PadCommP is experimental, do not use it.
@@ -259,7 +270,8 @@ func GenCommP(buf bytes.Buffer, cacheStart int, cacheLevels uint, cachePath stri
 }
 
 // Generate commPs Merkle-Tree to .tcache
-func GenTopMerkleTreeToCache(leafs []mt.DataBlock, cachePath string) ([]byte, error) {
+func GenTopMerkleTreeToCache(commPs [][]byte, cachePath string) ([]byte, error) {
+	leafs := bytesToDataBlocks(commPs)
 	tree, err := mt.NewWithPadding(CommpHashConfig, leafs, StackedNulPadding)
 	if err != nil {
 		log.Error(err)
@@ -390,13 +402,13 @@ func Proof(randomness uint64, carSize uint64, dataSize uint64, cachePath string)
 			// buf := GetChallengeChunk(carIndex, leafIndex/CAR_2MIB_CHUNK_SIZE+1)
 			buf := bytes.Buffer{}
 			// 3. Generate a car chunk proof
-			leaf := bytesToDataBlocks(buf.Bytes()[uint64(leafIndex)%CAR_2MIB_CHUNK_SIZE : uint64(leafIndex)%CAR_2MIB_CHUNK_SIZE+uint64(NODE_SIZE)])
+			leaf := bytesToDataBlock(buf.Bytes()[uint64(leafIndex)%CAR_2MIB_CHUNK_SIZE : uint64(leafIndex)%CAR_2MIB_CHUNK_SIZE+uint64(NODE_SIZE)])
 			proof, root, err := GenProof(buf, leaf)
 			if err != nil {
 				return nil, err
 			}
 			// 4. Generate cache proofs
-			cacheProof, _, err := GenProofFromCache(bytesToDataBlocks(root), cachePath)
+			cacheProof, _, err := GenProofFromCache(bytesToDataBlock(root), cachePath)
 			if err != nil {
 				return nil, err
 			}
@@ -432,7 +444,7 @@ func Verify(randomness uint64, carSize uint64, dataSize uint64, proofs []mt.Proo
 			// buf := GetChallengeChunk(carIndex, leafIndex/CAR_2MIB_CHUNK_SIZE+1)
 			buf := bytes.Buffer{}
 			// 3. Generate a car chunk proof
-			leaf := bytesToDataBlocks(buf.Bytes()[uint64(leafIndex)%CAR_2MIB_CHUNK_SIZE : uint64(leafIndex)%CAR_2MIB_CHUNK_SIZE+uint64(NODE_SIZE)])
+			leaf := bytesToDataBlock(buf.Bytes()[uint64(leafIndex)%CAR_2MIB_CHUNK_SIZE : uint64(leafIndex)%CAR_2MIB_CHUNK_SIZE+uint64(NODE_SIZE)])
 			rst, err := mt.Verify(leaf, &proofs[i], root[i], CommpHashConfig)
 			if err != nil || !rst {
 				return false, err
