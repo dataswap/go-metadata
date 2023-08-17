@@ -638,7 +638,7 @@ func Verify(randomness uint64, carSize uint64, dataSize uint64, cachePath string
 	// 4. Verify proofs
 	var idx []uint64
 	i := 0
-	for carIndex, _ := range carChallenges {
+	for carIndex := range carChallenges {
 		idx = append(idx, carIndex)
 	}
 
