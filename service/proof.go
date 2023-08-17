@@ -6,7 +6,6 @@ import (
 	"encoding/binary"
 	"encoding/gob"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"math/bits"
 	"os"
@@ -60,6 +59,10 @@ var (
 type DatasetMerkletree struct {
 	Root   []byte
 	Leaves [][]byte
+}
+
+type ChallengeProof struct {
+	Proof map[string]*mt.Proof
 }
 
 // DataBlock is a implementation of the DataBlock interface.
@@ -552,7 +555,7 @@ func VerifyTopProof(cachePath string, randomness uint64) (bool, *mt.Proof, error
 }
 
 // Generate challenge nodes Proofs
-func Proof(randomness uint64, carSize uint64, dataSize uint64, cachePath string) (*[]mt.Proof, error) {
+func Proof(randomness uint64, carSize uint64, dataSize uint64, cachePath string) (map[string]mt.Proof, error) {
 	// 1. Generate challenge nodes
 	carChallenges, err := GenChallenges(randomness, carSize, dataSize)
 	if err != nil {
@@ -567,7 +570,7 @@ func Proof(randomness uint64, carSize uint64, dataSize uint64, cachePath string)
 	sortCommPSlices(commPs)
 
 	// 2. Get challenge chunk data
-	proofs := []mt.Proof{}
+	challengeProof := make(map[string]mt.Proof)
 	for carIndex, LeavesIndex := range carChallenges {
 		for leafIndex := range LeavesIndex {
 
@@ -584,7 +587,7 @@ func Proof(randomness uint64, carSize uint64, dataSize uint64, cachePath string)
 				return nil, err
 			}
 			// 4. Generate cache proofs
-			cacheProof, _, err := GenProofFromCache(bytesToDataBlock(root), cachePath)
+			cacheProof, cacheRoot, err := GenProofFromCache(bytesToDataBlock(root), cachePath)
 			if err != nil {
 				return nil, err
 			}
@@ -594,25 +597,27 @@ func Proof(randomness uint64, carSize uint64, dataSize uint64, cachePath string)
 				return nil, err
 			}
 
-			proofs = append(proofs, *proof)
+			challengeProof[string(cacheRoot)] = *proof
 		}
 	}
 
 	// 6. Store to cache file
 	cPath := createPath(cachePath, "challenges"+CACHE_PROOFS_SUFFIX)
-	storeToFile(proofs, cPath)
+	storeToFile(challengeProof, cPath)
 
-	return &proofs, nil
+	return challengeProof, nil
 }
 
 // Verify challenge nodes Proof
 func Verify(randomness uint64, carSize uint64, dataSize uint64, cachePath string) (bool, error) {
+
 	// 1. Generate challenge nodes
 	carChallenges, err := GenChallenges(randomness, carSize, dataSize)
 	if err != nil {
 		return false, err
 	}
 
+	// 2. GET sort commP HASH
 	commPs, err := loadDeduplicateCommP(cachePath)
 	if err != nil {
 		log.Error(err)
@@ -620,35 +625,27 @@ func Verify(randomness uint64, carSize uint64, dataSize uint64, cachePath string
 	}
 	sortCommPSlices(commPs)
 
+	// 3. Load proofs
 	cPath := path.Join(cachePath, "challenges"+CACHE_PROOFS_SUFFIX)
-	var proofs []mt.Proof
-	err = loadFromFile(cPath, proofs)
+	var proofs map[string]mt.Proof
+	err = loadFromFile(cPath, &proofs)
 	if err != nil {
 		return false, err
 	}
-	if len(proofs) != len(carChallenges)*int(LeafChallengeCount(carSize)) {
-		return false, errors.New("proofs or root size error")
+
+	// 4. Verify proofs
+	var idx []uint64
+	i := 0
+	for carIndex, _ := range carChallenges {
+		idx = append(idx, carIndex)
 	}
 
-	// 2. Get challenge chunk data
-	i := 0
-	for carIndex, LeavesIndex := range carChallenges {
-		for leafIndex := range LeavesIndex {
-			commCid, err := commcid.DataCommitmentV1ToCID(commPs[carIndex])
-			if err != nil {
-				return false, err
-			}
-			// buf := GetChallengeChunk(carIndex, leafIndex/CAR_2MIB_CHUNK_SIZE+1)
-			buf := bytes.Buffer{}
-			root := make([]byte, 32)
-			// 3. Generate a car chunk proof
-			leaf := bytesToDataBlock(buf.Bytes()[uint64(leafIndex)%CAR_2MIB_CHUNK_SIZE : uint64(leafIndex)%CAR_2MIB_CHUNK_SIZE+uint64(NODE_SIZE)])
-			rst, err := mt.Verify(leaf, &proofs[i], root, CommpHashConfig)
-			if err != nil || !rst {
-				return false, err
-			}
-			i++
+	for leaf, proof := range proofs {
+		rst, err := mt.Verify(&DataBlock{Data: []byte(leaf)}, &proof, commPs[idx[i]], CommpHashConfig)
+		if err != nil || !rst {
+			return false, err
 		}
+		i++
 	}
 
 	return true, nil
