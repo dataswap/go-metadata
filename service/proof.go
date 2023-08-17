@@ -275,7 +275,9 @@ func loadFromFile(filePath string, target interface{}) error {
 func loadCommP(cachePath string) (*[]CommpSave, error) {
 	cPath := createPath(cachePath, "rawCommP"+CACHE_SUFFIX)
 	commp := []CommpSave{}
-	loadFromFile(cPath, commp)
+	if err := loadFromFile(cPath, &commp); err != nil {
+		return nil, err
+	}
 	return &commp, nil
 }
 
@@ -305,7 +307,7 @@ func sortCommPSlices(c []CommpSave) ([][]byte, []uint64) {
 func LoadSortCommp(cachePath string) ([][]byte, []uint64) {
 	c, err := loadCommP(cachePath)
 	if err != nil {
-		log.Error(err)
+		fmt.Println("loadCommP err: ", err)
 		return nil, nil
 	}
 	return sortCommPSlices(*c)
@@ -466,7 +468,8 @@ func PadCommP(sourceCommP []byte, sourcePaddedSize, targetPaddedSize uint64) ([]
 // SaveCommP append
 func SaveCommP(rawCommP []byte, carSize uint64, cachePath string) error {
 
-	commp := CommpSave{Commp: string(rawCommP), CarSize: carSize}
+	commp := []CommpSave{}
+	commp = append(commp, CommpSave{Commp: string(rawCommP), CarSize: carSize})
 	cPath := createPath(cachePath, "rawCommP"+CACHE_SUFFIX)
 
 	lock, err := NewFileLock(cachePath)
