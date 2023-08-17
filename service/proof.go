@@ -61,12 +61,9 @@ type DatasetMerkletree struct {
 	Leaves [][]byte
 }
 
-type ChallengeProof struct {
-	Proof map[string]*mt.Proof
-}
-
 type CommpSave struct {
-	Commp map[string]uint64
+	Commp   string
+	CarSize uint64
 }
 
 // DataBlock is a implementation of the DataBlock interface.
@@ -275,33 +272,37 @@ func loadFromFile(filePath string, target interface{}) error {
 	return nil
 }
 
-func loadCommP(cachePath string) (*CommpSave, error) {
+func loadCommP(cachePath string) (*[]CommpSave, error) {
 	cPath := createPath(cachePath, "rawCommP"+CACHE_SUFFIX)
-	commp := CommpSave{}
+	commp := []CommpSave{}
 	loadFromFile(cPath, commp)
 	return &commp, nil
 }
 
-func sortCommPSlices(c CommpSave) ([][]byte, []uint64) {
+func sortCommPSlices(c []CommpSave) ([][]byte, []uint64) {
 
-	var commp [][]byte
-	var size []uint64
-	for i := range c.Commp {
-		commp = append(commp, []byte(i))
+	m := make(map[string]uint64, len(c))
+	commp := make([][]byte, 0, len(c))
+	for _, v := range c {
+		m[v.Commp] = v.CarSize
+		commp = append(commp, []byte(v.Commp))
 	}
 
 	sort.Slice(commp, func(i, j int) bool {
-		return string(commp[i]) < string(commp[j])
+		return bytes.Compare(commp[i], commp[j]) < 0
 	})
 
+	size := make([]uint64, 0, len(commp))
 	for _, v := range commp {
-		size = append(size, c.Commp[string(v)])
+		size = append(size, m[string(v)])
 	}
 
 	return commp, size
 }
 
-func loadSortCommp(cachePath string) ([][]byte, []uint64) {
+// ------------------------------------------------------------
+
+func LoadSortCommp(cachePath string) ([][]byte, []uint64) {
 	c, err := loadCommP(cachePath)
 	if err != nil {
 		log.Error(err)
@@ -309,8 +310,6 @@ func loadSortCommp(cachePath string) ([][]byte, []uint64) {
 	}
 	return sortCommPSlices(*c)
 }
-
-// ------------------------------------------------------------
 
 // Car leaf challenge count
 func LeafChallengeCount(carSize uint64) uint32 {
@@ -467,7 +466,7 @@ func PadCommP(sourceCommP []byte, sourcePaddedSize, targetPaddedSize uint64) ([]
 // SaveCommP append
 func SaveCommP(rawCommP []byte, carSize uint64, cachePath string) error {
 
-	commp := CommpSave{Commp: map[string]uint64{string(rawCommP): carSize}}
+	commp := CommpSave{Commp: string(rawCommP), CarSize: carSize}
 	cPath := createPath(cachePath, "rawCommP"+CACHE_SUFFIX)
 
 	lock, err := NewFileLock(cachePath)
@@ -527,7 +526,7 @@ func GenCommP(buf bytes.Buffer, cacheStart int, cacheLevels uint, cachePath stri
 // cachePath: store to file path
 func GenTopProof(cachePath string) ([]byte, error) {
 
-	commPs, _ := loadSortCommp(cachePath)
+	commPs, _ := LoadSortCommp(cachePath)
 
 	Leaves := bytesToDataBlocks(commPs)
 	tree, err := mt.New(CommpHashConfig, Leaves)
@@ -576,7 +575,7 @@ func VerifyTopProof(cachePath string, randomness uint64) (bool, *mt.Proof, error
 func Proof(randomness uint64, cachePath string, ms GetMetaServiceHandle) (map[string]mt.Proof, error) {
 
 	// 1. Generate challenge nodes
-	commPs, carSize := loadSortCommp(cachePath)
+	commPs, carSize := LoadSortCommp(cachePath)
 
 	carChallenges, err := GenChallenges(randomness, uint64(len(commPs)), carSize)
 	if err != nil {
@@ -629,7 +628,7 @@ func Proof(randomness uint64, cachePath string, ms GetMetaServiceHandle) (map[st
 func Verify(randomness uint64, cachePath string) (bool, error) {
 
 	// 1. Generate challenge nodes
-	commPs, carSize := loadSortCommp(cachePath)
+	commPs, carSize := LoadSortCommp(cachePath)
 	if commPs == nil {
 		return false, errors.New("commPs is nil")
 	}
@@ -639,7 +638,7 @@ func Verify(randomness uint64, cachePath string) (bool, error) {
 		return false, err
 	}
 
-	// 2. Load proofs, grandparent dir
+	// 2. Load proofs
 	var proofs map[string]mt.Proof
 	cPath := path.Join(cachePath, "challenges"+CACHE_PROOFS_SUFFIX)
 	err = loadFromFile(cPath, &proofs)
