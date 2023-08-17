@@ -52,9 +52,7 @@ func proof(c *cli.Context) error {
 		return err
 	}
 
-	_, err := metaservice.Proof(randomness, cachePath, func() *metaservice.MetaService {
-		return msrv
-	})
+	_, err := metaservice.Proof(randomness, cachePath)
 	if err != nil {
 		return err
 	}
