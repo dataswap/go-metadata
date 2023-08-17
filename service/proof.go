@@ -555,7 +555,7 @@ func VerifyTopProof(cachePath string, randomness uint64) (bool, *mt.Proof, error
 	return true, nil, nil
 }
 
-// Generate challenge nodes Proofs, commPs and proofs store grandparent cachePath
+// Generate challenge nodes Proofs
 func Proof(randomness uint64, carSize uint64, dataSize uint64, cachePath string, ms GetMetaServiceHandle) (map[string]mt.Proof, error) {
 	// 1. Generate challenge nodes
 	carChallenges, err := GenChallenges(randomness, carSize, dataSize)
@@ -563,8 +563,7 @@ func Proof(randomness uint64, carSize uint64, dataSize uint64, cachePath string,
 		return nil, err
 	}
 
-	gpPath := path.Join(cachePath, "..", "..")
-	commPs, err := loadDeduplicateCommP(gpPath)
+	commPs, err := loadDeduplicateCommP(cachePath)
 	if err != nil {
 		log.Error(err)
 		return nil, err
@@ -607,7 +606,7 @@ func Proof(randomness uint64, carSize uint64, dataSize uint64, cachePath string,
 	}
 
 	// 6. Store to cache file
-	cPath := createPath(gpPath, "challenges"+CACHE_PROOFS_SUFFIX)
+	cPath := createPath(cachePath, "challenges"+CACHE_PROOFS_SUFFIX)
 	storeToFile(challengeProof, cPath)
 
 	return challengeProof, nil
@@ -622,10 +621,8 @@ func Verify(randomness uint64, carSize uint64, dataSize uint64, cachePath string
 		return false, err
 	}
 
-	gpPath := path.Join(cachePath, "..", "..")
-
 	// 2. GET sort commP HASH
-	commPs, err := loadDeduplicateCommP(gpPath)
+	commPs, err := loadDeduplicateCommP(cachePath)
 	if err != nil {
 		log.Error(err)
 		return false, err
@@ -634,7 +631,7 @@ func Verify(randomness uint64, carSize uint64, dataSize uint64, cachePath string
 
 	// 3. Load proofs, grandparent dir
 	var proofs map[string]mt.Proof
-	cPath := path.Join(gpPath, "challenges"+CACHE_PROOFS_SUFFIX)
+	cPath := path.Join(cachePath, "challenges"+CACHE_PROOFS_SUFFIX)
 	err = loadFromFile(cPath, &proofs)
 	if err != nil {
 		return false, err
