@@ -354,7 +354,6 @@ func GenCarChallenge(randomness uint64, carChallengeIndex uint64, carChallengesC
 	binary.LittleEndian.PutUint64(bytes, randomness)
 	sha256Func.Write(bytes)
 
-	bytes = bytes[:0]
 	binary.LittleEndian.PutUint64(bytes, carChallengeIndex)
 	sha256Func.Write(bytes)
 
