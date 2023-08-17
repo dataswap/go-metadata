@@ -12,9 +12,11 @@ import (
 	"os"
 	"path"
 	"reflect"
+	"sort"
 	"sync"
 	"syscall"
 
+	commcid "github.com/filecoin-project/go-fil-commcid"
 	sha256simd "github.com/minio/sha256-simd"
 	"github.com/opentracing/opentracing-go/log"
 	"golang.org/x/xerrors"
@@ -258,7 +260,7 @@ func loadFromFile(filePath string, target interface{}) error {
 	return nil
 }
 
-func loadDeduplicateCommPFromCache(filePath string) ([][]byte, error) {
+func loadDeduplicateCommP(filePath string) ([][]byte, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, err
@@ -276,6 +278,12 @@ func loadDeduplicateCommPFromCache(filePath string) ([][]byte, error) {
 	}
 
 	return commP, nil
+}
+
+func sortCommPSlices(byteSlices [][]byte) {
+	sort.Slice(byteSlices, func(i, j int) bool {
+		return string(byteSlices[i]) < string(byteSlices[j])
+	})
 }
 
 // ------------------------------------------------------------
@@ -493,11 +501,13 @@ func GenCommP(buf bytes.Buffer, cacheStart int, cacheLevels uint, cachePath stri
 // filePath: commPs[]
 // cachePath: store to file path
 func GenTopProof(filePath string, cachePath string) ([]byte, error) {
-	commPs, err := loadDeduplicateCommPFromCache(filePath)
+	commPs, err := loadDeduplicateCommP(filePath)
 	if err != nil {
 		log.Error(err)
 		return nil, err
 	}
+	sortCommPSlices(commPs)
+
 	Leaves := bytesToDataBlocks(commPs)
 	tree, err := mt.New(CommpHashConfig, Leaves)
 	if err != nil {
@@ -549,11 +559,23 @@ func Proof(randomness uint64, carSize uint64, dataSize uint64, cachePath string)
 		return nil, err
 	}
 
+	commPs, err := loadDeduplicateCommP(cachePath)
+	if err != nil {
+		log.Error(err)
+		return nil, err
+	}
+	sortCommPSlices(commPs)
+
 	// 2. Get challenge chunk data
 	proofs := []mt.Proof{}
-	for _, LeavesIndex := range carChallenges {
+	for carIndex, LeavesIndex := range carChallenges {
 		for leafIndex := range LeavesIndex {
-			// buf := GetChallengeChunk(carIndex, leafIndex/CAR_2MIB_CHUNK_SIZE+1)
+
+			commCid, err := commcid.DataCommitmentV1ToCID(commPs[carIndex])
+			if err != nil {
+				return nil, err
+			}
+			// buf := GetChallengeChunk(commCid, leafIndex/CAR_2MIB_CHUNK_SIZE+1)
 			buf := bytes.Buffer{}
 			// 3. Generate a car chunk proof
 			leaf := bytesToDataBlock(buf.Bytes()[uint64(leafIndex)%CAR_2MIB_CHUNK_SIZE : uint64(leafIndex)%CAR_2MIB_CHUNK_SIZE+uint64(NODE_SIZE)])
@@ -591,6 +613,13 @@ func Verify(randomness uint64, carSize uint64, dataSize uint64, cachePath string
 		return false, err
 	}
 
+	commPs, err := loadDeduplicateCommP(cachePath)
+	if err != nil {
+		log.Error(err)
+		return false, err
+	}
+	sortCommPSlices(commPs)
+
 	cPath := path.Join(cachePath, "challenges"+CACHE_PROOFS_SUFFIX)
 	var proofs []mt.Proof
 	err = loadFromFile(cPath, proofs)
@@ -603,8 +632,12 @@ func Verify(randomness uint64, carSize uint64, dataSize uint64, cachePath string
 
 	// 2. Get challenge chunk data
 	i := 0
-	for _, LeavesIndex := range carChallenges {
+	for carIndex, LeavesIndex := range carChallenges {
 		for leafIndex := range LeavesIndex {
+			commCid, err := commcid.DataCommitmentV1ToCID(commPs[carIndex])
+			if err != nil {
+				return false, err
+			}
 			// buf := GetChallengeChunk(carIndex, leafIndex/CAR_2MIB_CHUNK_SIZE+1)
 			buf := bytes.Buffer{}
 			root := make([]byte, 32)
