@@ -12,7 +12,7 @@ import (
 var proofCmd = &cli.Command{
 	Name:      "proof",
 	Usage:     "compute proof of merkle-tree",
-	ArgsUsage: "<randomness> <carSize> <dataSize> <cachePath>",
+	ArgsUsage: "<randomness> <cachePath>",
 	Action:    proof,
 	Flags: []cli.Flag{
 		&cli.StringFlag{
@@ -35,14 +35,12 @@ var proofCmd = &cli.Command{
 
 // proof is a command to compute proof of commps.
 func proof(c *cli.Context) error {
-	if c.Args().Len() != 4 {
-		return xerrors.Errorf("Args must be specified 4 nums!")
+	if c.Args().Len() != 2 {
+		return xerrors.Errorf("Args must be specified 2 nums!")
 	}
 
 	randomness, _ := strconv.ParseUint(c.Args().First(), 10, 64)
-	carSize, _ := strconv.ParseUint(c.Args().Get(1), 10, 64)
-	dataSize, _ := strconv.ParseUint(c.Args().Get(2), 10, 64)
-	cachePath := c.Args().Get(3)
+	cachePath := c.Args().Get(1)
 
 	msrv := metaservice.New(
 		metaservice.MetaPath(c.String("meta-path")),
@@ -54,7 +52,7 @@ func proof(c *cli.Context) error {
 		return err
 	}
 
-	_, err := metaservice.Proof(randomness, carSize, dataSize, cachePath, func() *metaservice.MetaService {
+	_, err := metaservice.Proof(randomness, cachePath, func() *metaservice.MetaService {
 		return msrv
 	})
 	if err != nil {

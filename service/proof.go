@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/gob"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"math/bits"
 	"os"
@@ -29,7 +30,6 @@ const (
 	NODE_SIZE         = 32
 	CHUNK_NODES_NUM   = 4
 
-	CAR_CHALLENGES_RATE = float64(0.001)
 	CAR_32GIB_SIZE      = uint64(1 << 35)
 	CAR_2MIB_CHUNK_SIZE = uint64(1 << 21)
 
@@ -63,6 +63,10 @@ type DatasetMerkletree struct {
 
 type ChallengeProof struct {
 	Proof map[string]*mt.Proof
+}
+
+type CommpSave struct {
+	Commp map[string]uint64
 }
 
 // DataBlock is a implementation of the DataBlock interface.
@@ -234,8 +238,16 @@ func createPath(filePath string, fileName string) string {
 	return path.Join(filePath, fileName)
 }
 
-func storeToFile(data interface{}, filePath string) error {
-	file, err := os.Create(filePath)
+func storeToFile(data interface{}, filePath string, append bool) error {
+
+	var file *os.File
+	var err error
+	if append {
+		file, err = os.OpenFile(filePath, os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
+	} else {
+		file, err = os.Create(filePath)
+	}
+
 	if err != nil {
 		return err
 	}
@@ -263,31 +275,39 @@ func loadFromFile(filePath string, target interface{}) error {
 	return nil
 }
 
-func loadDeduplicateCommP(cachePath string) ([][]byte, error) {
+func loadCommP(cachePath string) (*CommpSave, error) {
 	cPath := createPath(cachePath, "rawCommP"+CACHE_SUFFIX)
-	data, err := os.ReadFile(cPath)
-	if err != nil {
-		return nil, err
-	}
-
-	nodeNum := len(data) / NODE_SIZE
-	commP := make([][]byte, nodeNum)
-	uniqueMap := make(map[string]bool)
-
-	for i := 0; i < nodeNum; i++ {
-		if !uniqueMap[string(data[i*NODE_SIZE:(i+1)*NODE_SIZE])] {
-			uniqueMap[string(data[i*NODE_SIZE:(i+1)*NODE_SIZE])] = true
-			commP[i] = data[i*NODE_SIZE : (i+1)*NODE_SIZE]
-		}
-	}
-
-	return commP, nil
+	commp := CommpSave{}
+	loadFromFile(cPath, commp)
+	return &commp, nil
 }
 
-func sortCommPSlices(byteSlices [][]byte) {
-	sort.Slice(byteSlices, func(i, j int) bool {
-		return string(byteSlices[i]) < string(byteSlices[j])
+func sortCommPSlices(c CommpSave) ([][]byte, []uint64) {
+
+	var commp [][]byte
+	var size []uint64
+	for i := range c.Commp {
+		commp = append(commp, []byte(i))
+	}
+
+	sort.Slice(commp, func(i, j int) bool {
+		return string(commp[i]) < string(commp[j])
 	})
+
+	for _, v := range commp {
+		size = append(size, c.Commp[string(v)])
+	}
+
+	return commp, size
+}
+
+func loadSortCommp(cachePath string) ([][]byte, []uint64) {
+	c, err := loadCommP(cachePath)
+	if err != nil {
+		log.Error(err)
+		return nil, nil
+	}
+	return sortCommPSlices(*c)
 }
 
 // ------------------------------------------------------------
@@ -301,24 +321,32 @@ func LeafChallengeCount(carSize uint64) uint32 {
 	}
 }
 
+func CarChallengeCount(carNum uint64) uint64 {
+	if carNum < 1000 {
+		return 1
+	} else {
+		return carNum/1000 + 1
+	}
+}
+
 // GenChallenges is generate the challenges car nodes
-func GenChallenges(randomness uint64, carSize uint64, dataSize uint64) (map[uint64][]uint64, error) {
+func GenChallenges(randomness uint64, carNum uint64, carSize []uint64) (map[uint64][]uint64, error) {
 	carChallenges := make(map[uint64][]uint64)
 
-	carChallengesCount := float64(dataSize%carSize) * CAR_CHALLENGES_RATE
-	leafChallengeCount := LeafChallengeCount(carSize)
+	carChallengesCount := CarChallengeCount(carNum)
 
-	for i := uint64(0); i < uint64(carChallengesCount); i++ {
-		carIndex := GenCarChallenge(randomness, i, dataSize, carSize)
+	for i := uint64(0); i < carChallengesCount; i++ {
+		carIndex := GenCarChallenge(randomness, i, carChallengesCount)
+		leafChallengeCount := LeafChallengeCount(carSize[carIndex])
 		for j := uint32(0); j < leafChallengeCount; j++ {
-			carChallenges[carIndex] = append(carChallenges[carIndex], GenLeafChallenge(randomness, carIndex, j, carSize))
+			carChallenges[carIndex] = append(carChallenges[carIndex], GenLeafChallenge(randomness, carIndex, j, carSize[carIndex]))
 		}
 	}
 
 	return carChallenges, nil
 }
 
-func GenCarChallenge(randomness uint64, carChallengeIndex uint64, dataSize uint64, carSize uint64) uint64 {
+func GenCarChallenge(randomness uint64, carChallengeIndex uint64, carChallengesCount uint64) uint64 {
 	sha256Func := sha256simd.New()
 
 	bytes := make([]byte, 8)
@@ -331,8 +359,8 @@ func GenCarChallenge(randomness uint64, carChallengeIndex uint64, dataSize uint6
 
 	hash := sha256Func.Sum(nil)
 
-	leaf_challenge := binary.LittleEndian.Uint64(hash[:8])
-	return leaf_challenge % dataSize / carSize
+	carChallenge := binary.LittleEndian.Uint64(hash[:8])
+	return carChallenge % carChallengesCount
 }
 
 func GenLeafChallenge(randomness uint64, carIndex uint64, leafChallengeIndex uint32, carSize uint64) uint64 {
@@ -437,13 +465,10 @@ func PadCommP(sourceCommP []byte, sourcePaddedSize, targetPaddedSize uint64) ([]
 }
 
 // SaveCommP append
-func SaveCommP(rawCommP []byte, cachePath string) error {
+func SaveCommP(rawCommP []byte, carSize uint64, cachePath string) error {
+
+	commp := CommpSave{Commp: map[string]uint64{string(rawCommP): carSize}}
 	cPath := createPath(cachePath, "rawCommP"+CACHE_SUFFIX)
-	file, err := os.OpenFile(cPath, os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
 
 	lock, err := NewFileLock(cachePath)
 	if err != nil {
@@ -458,10 +483,7 @@ func SaveCommP(rawCommP []byte, cachePath string) error {
 	}
 	defer lock.Unlock()
 
-	_, err = file.Write(rawCommP)
-	if err != nil {
-		return err
-	}
+	storeToFile(commp, cPath, true)
 
 	return nil
 }
@@ -505,12 +527,7 @@ func GenCommP(buf bytes.Buffer, cacheStart int, cacheLevels uint, cachePath stri
 // cachePath: store to file path
 func GenTopProof(cachePath string) ([]byte, error) {
 
-	commPs, err := loadDeduplicateCommP(cachePath)
-	if err != nil {
-		log.Error(err)
-		return nil, err
-	}
-	sortCommPSlices(commPs)
+	commPs, _ := loadSortCommp(cachePath)
 
 	Leaves := bytesToDataBlocks(commPs)
 	tree, err := mt.New(CommpHashConfig, Leaves)
@@ -523,7 +540,7 @@ func GenTopProof(cachePath string) ([]byte, error) {
 
 	cPath := createPath(cachePath, hex.EncodeToString(tree.Root)+CACHE_T_SUFFIX)
 
-	err = storeToFile(cache, cPath)
+	err = storeToFile(cache, cPath, false)
 	if err != nil {
 		log.Error(err)
 		return nil, err
@@ -556,19 +573,15 @@ func VerifyTopProof(cachePath string, randomness uint64) (bool, *mt.Proof, error
 }
 
 // Generate challenge nodes Proofs
-func Proof(randomness uint64, carSize uint64, dataSize uint64, cachePath string, ms GetMetaServiceHandle) (map[string]mt.Proof, error) {
-	// 1. Generate challenge nodes
-	carChallenges, err := GenChallenges(randomness, carSize, dataSize)
-	if err != nil {
-		return nil, err
-	}
+func Proof(randomness uint64, cachePath string, ms GetMetaServiceHandle) (map[string]mt.Proof, error) {
 
-	commPs, err := loadDeduplicateCommP(cachePath)
+	// 1. Generate challenge nodes
+	commPs, carSize := loadSortCommp(cachePath)
+
+	carChallenges, err := GenChallenges(randomness, uint64(len(commPs)), carSize)
 	if err != nil {
-		log.Error(err)
 		return nil, err
 	}
-	sortCommPSlices(commPs)
 
 	// 2. Get challenge chunk data
 	challengeProof := make(map[string]mt.Proof)
@@ -607,29 +620,26 @@ func Proof(randomness uint64, carSize uint64, dataSize uint64, cachePath string,
 
 	// 6. Store to cache file
 	cPath := createPath(cachePath, "challenges"+CACHE_PROOFS_SUFFIX)
-	storeToFile(challengeProof, cPath)
+	storeToFile(challengeProof, cPath, false)
 
 	return challengeProof, nil
 }
 
 // Verify challenge nodes Proof
-func Verify(randomness uint64, carSize uint64, dataSize uint64, cachePath string) (bool, error) {
+func Verify(randomness uint64, cachePath string) (bool, error) {
 
 	// 1. Generate challenge nodes
-	carChallenges, err := GenChallenges(randomness, carSize, dataSize)
+	commPs, carSize := loadSortCommp(cachePath)
+	if commPs == nil {
+		return false, errors.New("commPs is nil")
+	}
+
+	carChallenges, err := GenChallenges(randomness, uint64(len(commPs)), carSize)
 	if err != nil {
 		return false, err
 	}
 
-	// 2. GET sort commP HASH
-	commPs, err := loadDeduplicateCommP(cachePath)
-	if err != nil {
-		log.Error(err)
-		return false, err
-	}
-	sortCommPSlices(commPs)
-
-	// 3. Load proofs, grandparent dir
+	// 2. Load proofs, grandparent dir
 	var proofs map[string]mt.Proof
 	cPath := path.Join(cachePath, "challenges"+CACHE_PROOFS_SUFFIX)
 	err = loadFromFile(cPath, &proofs)
@@ -637,7 +647,7 @@ func Verify(randomness uint64, carSize uint64, dataSize uint64, cachePath string
 		return false, err
 	}
 
-	// 4. Verify proofs
+	// 3. Verify proofs
 	var idx []uint64
 	i := 0
 	for carIndex := range carChallenges {

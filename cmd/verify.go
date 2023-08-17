@@ -12,7 +12,7 @@ import (
 var verifyCmd = &cli.Command{
 	Name:      "verify",
 	Usage:     "verify challenge proofs of merkle-tree",
-	ArgsUsage: "<randomness> <carSize> <dataSize> <cachePath>",
+	ArgsUsage: "<randomness> <cachePath>",
 	Action:    verify,
 }
 
@@ -23,11 +23,9 @@ func verify(c *cli.Context) error {
 	}
 
 	randomness, _ := strconv.ParseUint(c.Args().First(), 10, 64)
-	carSize, _ := strconv.ParseUint(c.Args().Get(1), 10, 64)
-	dataSize, _ := strconv.ParseUint(c.Args().Get(2), 10, 64)
-	cachePath := c.Args().Get(3)
+	cachePath := c.Args().Get(1)
 
-	bl, err := metaservice.Verify(randomness, carSize, dataSize, cachePath)
+	bl, err := metaservice.Verify(randomness, cachePath)
 	if err != nil {
 		return err
 	}
