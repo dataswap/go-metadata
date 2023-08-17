@@ -10,20 +10,19 @@ import (
 var tproofCmd = &cli.Command{
 	Name:      "proof",
 	Usage:     "compute proof of commPs",
-	ArgsUsage: "<commPsPath> <cachePath>",
+	ArgsUsage: "<cachePath>",
 	Action:    tProof,
 }
 
 // tProof is a command to compute proof of commps.
 func tProof(c *cli.Context) error {
-	if c.Args().Len() != 4 {
-		return xerrors.Errorf("Args must be specified 4 nums!")
+	if c.Args().Len() != 1 {
+		return xerrors.Errorf("Args must be specified 1 nums!")
 	}
 
-	commPsPath := c.Args().First()
-	cachePath := c.Args().Get(1)
+	cachePath := c.Args().First()
 
-	_, err := metaservice.GenTopProof(commPsPath, cachePath)
+	_, err := metaservice.GenTopProof(cachePath)
 	if err != nil {
 		return err
 	}
