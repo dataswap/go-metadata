@@ -25,6 +25,18 @@ import (
 	pb "github.com/ipfs/go-unixfs/pb"
 )
 
+var (
+	instance *MetaService
+	once     sync.Once
+)
+
+func MetaServiceInstance(opts ...Option) *MetaService {
+	once.Do(func() {
+		instance = New(opts...)
+	})
+	return instance
+}
+
 type MetaService struct {
 	opts     *Options
 	metas    map[cid.Cid]*types.ChunkMeta // chunks
@@ -361,13 +373,14 @@ func (ms *MetaService) SourceParentPath() string {
 
 type GetMetaServiceHandle func() *MetaService
 
-func GetChallengeChunk(commCid cid.Cid, offset uint64, size uint64, getms GetMetaServiceHandle) ([]byte, error) {
-	ms := getms()
+func GetChallengeChunk(commCid cid.Cid, offset uint64, size uint64) ([]byte, error) {
+	ms := MetaServiceInstance()
 	metaPath := filepath.Join(ms.MetaPath(), commCid.String()+".json")
 	if !utils.PathExists(metaPath) {
 		return nil, fmt.Errorf("cant find meta file:%s", metaPath)
 	}
 
+	ms.LoadMeta(metaPath)
 	metas, err := ms.GetChunkMetas(offset, size)
 	if err != nil {
 		return nil, err

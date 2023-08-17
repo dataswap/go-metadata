@@ -573,7 +573,7 @@ func VerifyTopProof(cachePath string, randomness uint64) (bool, *mt.Proof, error
 }
 
 // Generate challenge nodes Proofs
-func Proof(randomness uint64, cachePath string, ms GetMetaServiceHandle) (map[string]mt.Proof, error) {
+func Proof(randomness uint64, cachePath string) (map[string]mt.Proof, error) {
 
 	// 1. Generate challenge nodes
 	commPs, carSize := loadSortCommp(cachePath)
@@ -592,7 +592,7 @@ func Proof(randomness uint64, cachePath string, ms GetMetaServiceHandle) (map[st
 			if err != nil {
 				return nil, err
 			}
-			buf, err := GetChallengeChunk(commCid, uint64(leafIndex)/CAR_2MIB_CHUNK_SIZE+1, CAR_2MIB_CHUNK_SIZE, ms)
+			buf, err := GetChallengeChunk(commCid, uint64(leafIndex)/CAR_2MIB_CHUNK_SIZE+1, CAR_2MIB_CHUNK_SIZE)
 			if err != nil {
 				return nil, err
 			}
