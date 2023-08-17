@@ -12,7 +12,6 @@ import (
 	"github.com/dataswap/go-metadata/libs"
 	"github.com/dataswap/go-metadata/types"
 	"github.com/dataswap/go-metadata/utils"
-	commcid "github.com/filecoin-project/go-fil-commcid"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-merkledag"
 	helpers "github.com/ipfs/go-unixfs/importer/helpers"
@@ -360,14 +359,9 @@ func (ms *MetaService) SourceParentPath() string {
 	return ms.opts.sourceParentPath
 }
 
-type GetChunksHandle func(hash []byte, offset uint64, size uint64, getms func() *MetaService) ([]byte, error)
+type GetMetaServiceHandle func() *MetaService
 
-func GetChallengeChunk(hash []byte, offset uint64, size uint64, getms func() *MetaService) ([]byte, error) {
-	commCid, err := commcid.DataCommitmentV1ToCID(hash)
-	if err != nil {
-		return nil, err
-	}
-
+func GetChallengeChunk(commCid cid.Cid, offset uint64, size uint64, getms GetMetaServiceHandle) ([]byte, error) {
 	ms := getms()
 	metaPath := filepath.Join(ms.MetaPath(), commCid.String()+".json")
 	if !utils.PathExists(metaPath) {
@@ -387,7 +381,9 @@ func GetChallengeChunk(hash []byte, offset uint64, size uint64, getms func() *Me
 
 	targetPath := filepath.Join(tempDir, commCid.String()+".car")
 
-	ms.GenerateChunksFromMeta(targetPath, ms.SourceParentPath(), metas)
+	if err := ms.GenerateChunksFromMeta(targetPath, ms.SourceParentPath(), metas); err != nil {
+		return nil, err
+	}
 
 	file, err := os.Open(targetPath)
 	if err != nil {
@@ -396,7 +392,7 @@ func GetChallengeChunk(hash []byte, offset uint64, size uint64, getms func() *Me
 	defer file.Close()
 
 	buf := make([]byte, size)
-	if _, err := file.ReadAt(buf, int64(size)); err != nil {
+	if _, err := file.ReadAt(buf, int64(offset)); err != nil {
 		return nil, err
 	}
 
