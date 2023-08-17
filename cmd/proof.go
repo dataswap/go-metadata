@@ -14,6 +14,23 @@ var proofCmd = &cli.Command{
 	Usage:     "compute proof of merkle-tree",
 	ArgsUsage: "<randomness> <carSize> <dataSize> <cachePath>",
 	Action:    proof,
+	Flags: []cli.Flag{
+		&cli.StringFlag{
+			Name:     "meta-path",
+			Usage:    "The meta file",
+			Required: true,
+		},
+		&cli.StringFlag{
+			Name:     "source-parent-path",
+			Usage:    "The source file",
+			Required: true,
+		},
+		&cli.BoolFlag{
+			Name:  "raw-leaves",
+			Usage: "The raw leaves",
+			Value: false,
+		},
+	},
 }
 
 // proof is a command to compute proof of commps.
@@ -27,7 +44,19 @@ func proof(c *cli.Context) error {
 	dataSize, _ := strconv.ParseUint(c.Args().Get(2), 10, 64)
 	cachePath := c.Args().Get(3)
 
-	_, err := metaservice.Proof(randomness, carSize, dataSize, cachePath)
+	msrv := metaservice.New(
+		metaservice.MetaPath(c.String("meta-path")),
+		metaservice.SourceParentPath(c.String("source-parent-path")),
+		metaservice.RawLeaves(c.Bool("raw-leaves")),
+	)
+
+	if err := msrv.LoadMeta(c.String("meta-path")); err != nil {
+		return err
+	}
+
+	_, err := metaservice.Proof(randomness, carSize, dataSize, cachePath, func() *metaservice.MetaService {
+		return msrv
+	})
 	if err != nil {
 		return err
 	}

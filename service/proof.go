@@ -555,7 +555,7 @@ func VerifyTopProof(cachePath string, randomness uint64) (bool, *mt.Proof, error
 }
 
 // Generate challenge nodes Proofs
-func Proof(randomness uint64, carSize uint64, dataSize uint64, cachePath string) (map[string]mt.Proof, error) {
+func Proof(randomness uint64, carSize uint64, dataSize uint64, cachePath string, ms GetMetaServiceHandle) (map[string]mt.Proof, error) {
 	// 1. Generate challenge nodes
 	carChallenges, err := GenChallenges(randomness, carSize, dataSize)
 	if err != nil {
@@ -578,11 +578,13 @@ func Proof(randomness uint64, carSize uint64, dataSize uint64, cachePath string)
 			if err != nil {
 				return nil, err
 			}
-			// buf := GetChallengeChunk(commCid, leafIndex/CAR_2MIB_CHUNK_SIZE+1)
-			buf := bytes.Buffer{}
+			buf, err := GetChallengeChunk(commCid, uint64(leafIndex)/CAR_2MIB_CHUNK_SIZE+1, CAR_2MIB_CHUNK_SIZE, ms)
+			if err != nil {
+				return nil, err
+			}
 			// 3. Generate a car chunk proof
-			leaf := bytesToDataBlock(buf.Bytes()[uint64(leafIndex)%CAR_2MIB_CHUNK_SIZE : uint64(leafIndex)%CAR_2MIB_CHUNK_SIZE+uint64(NODE_SIZE)])
-			proof, root, err := GenProof(buf, leaf)
+			leaf := bytesToDataBlock(buf[uint64(leafIndex)%CAR_2MIB_CHUNK_SIZE : uint64(leafIndex)%CAR_2MIB_CHUNK_SIZE+uint64(NODE_SIZE)])
+			proof, root, err := GenProof(*bytes.NewBuffer(buf), leaf)
 			if err != nil {
 				return nil, err
 			}
