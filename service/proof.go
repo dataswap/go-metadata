@@ -660,8 +660,10 @@ func Verify(randomness uint64, cachePath string) (bool, error) {
 	// 3. Verify proofs
 	var idx []uint64
 	i := 0
-	for carIndex := range carChallenges {
-		idx = append(idx, carIndex)
+	for carIndex, LeavesIndex := range carChallenges {
+		for range LeavesIndex {
+			idx = append(idx, carIndex)
+		}
 	}
 
 	for leaf, proof := range proofs {
