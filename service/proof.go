@@ -479,11 +479,13 @@ func SaveCommP(rawCommP []byte, carSize uint64, cachePath string) error {
 		return err
 	}
 	defer lock.Unlock()
-	commp, err := loadCommP(cPath)
-	if err != nil {
-		return err
+	commp, _ := loadCommP(cPath)
+	if commp == nil { // first is nil
+		commp = &[]CommpSave{}
 	}
+
 	*commp = append(*commp, CommpSave{Commp: string(rawCommP), CarSize: carSize})
+
 	storeToFile(commp, cPath)
 
 	return nil
