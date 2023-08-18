@@ -34,9 +34,9 @@ const (
 	CAR_2MIB_CHUNK_SIZE = uint64(127 * CAR_2MIB_NODE_NUM) // source data node = 127, no padding
 	CAR_2MIB_NODE_NUM   = uint64(256 * 32 * 2)
 
-	CACHE_SUFFIX        = ".cache"
-	CACHE_T_SUFFIX      = ".tcache"
-	CACHE_PROOFS_SUFFIX = ".proofs"
+	CACHE_SUFFIX      = ".cache"
+	CACHE_TPROOF_PATH = "topMerkletree.tcache"
+	CACHE_PROOFS_PATH = "challenges.proofs"
 
 	// MaxLayers is the current maximum height of the rust-fil-proofs proving tree.
 	MaxLayers = uint(31) // result of log2( 64 GiB / 32 )
@@ -541,9 +541,9 @@ func GenTopProof(cachePath string) ([]byte, error) {
 
 	cache := DatasetMerkletree{Root: tree.Root, Leaves: tree.Leaves}
 
-	cPath := createPath(cachePath, hex.EncodeToString(tree.Root)+CACHE_T_SUFFIX)
+	cPath := createPath(cachePath, CACHE_TPROOF_PATH)
 
-	err = storeToFile(cache, cPath)
+	err = storeToFile(&cache, cPath)
 	if err != nil {
 		log.Error(err)
 		return nil, err
@@ -554,7 +554,8 @@ func GenTopProof(cachePath string) ([]byte, error) {
 
 func VerifyTopProof(cachePath string, randomness uint64) (bool, *mt.Proof, error) {
 	cache := DatasetMerkletree{}
-	if err := loadFromFile(cachePath, cache); err != nil {
+	cPath := createPath(cachePath, CACHE_TPROOF_PATH)
+	if err := loadFromFile(cPath, &cache); err != nil {
 		return false, nil, err
 	}
 	Leaves := bytesToDataBlocks(cache.Leaves)
@@ -632,7 +633,7 @@ func Proof(randomness uint64, cachePath string) (map[string]mt.Proof, error) {
 	}
 
 	// 6. Store to cache file
-	cPath := createPath(cachePath, "challenges"+CACHE_PROOFS_SUFFIX)
+	cPath := createPath(cachePath, CACHE_PROOFS_PATH)
 	storeToFile(challengeProof, cPath)
 
 	return challengeProof, nil
@@ -654,7 +655,7 @@ func Verify(randomness uint64, cachePath string) (bool, error) {
 
 	// 2. Load proofs
 	var proofs map[string]mt.Proof
-	cPath := path.Join(cachePath, "challenges"+CACHE_PROOFS_SUFFIX)
+	cPath := path.Join(cachePath, CACHE_PROOFS_PATH)
 	err = loadFromFile(cPath, &proofs)
 	if err != nil {
 		return false, err
