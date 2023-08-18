@@ -193,7 +193,7 @@ func bufferToDataBlocks(buf bytes.Buffer) []mt.DataBlock {
 
 	// Padding source data
 	if mod := srcLen % SOURCE_CHUNK_SIZE; mod != 0 {
-		fmt.Println("total padlen: ", SOURCE_CHUNK_SIZE-mod, ", srcLen: ", srcLen)
+		// fmt.Println("total padlen: ", SOURCE_CHUNK_SIZE-mod, ", srcLen: ", srcLen)
 		buf.Write(make([]byte, SOURCE_CHUNK_SIZE-mod))
 		srcLen = buf.Len()
 	}
@@ -270,9 +270,8 @@ func loadFromFile(filePath string, target interface{}) error {
 }
 
 func loadCommP(cachePath string) (*[]CommpSave, error) {
-	cPath := createPath(cachePath, "rawCommP"+CACHE_SUFFIX)
 	commp := []CommpSave{}
-	if err := loadFromFile(cPath, &commp); err != nil {
+	if err := loadFromFile(cachePath, &commp); err != nil {
 		return nil, err
 	}
 	return &commp, nil
@@ -302,7 +301,8 @@ func sortCommPSlices(c []CommpSave) ([][]byte, []uint64) {
 // ------------------------------------------------------------
 
 func LoadSortCommp(cachePath string) ([][]byte, []uint64) {
-	c, err := loadCommP(cachePath)
+	cPath := createPath(cachePath, "rawCommP"+CACHE_SUFFIX)
+	c, err := loadCommP(cPath)
 	if err != nil {
 		fmt.Println("loadCommP err: ", err)
 		return nil, nil
@@ -603,7 +603,7 @@ func Proof(randomness uint64, cachePath string) (map[string]mt.Proof, error) {
 			fmt.Println("3. Generate a car chunk proof")
 
 			blocks := bufferToDataBlocks(*bytes.NewBuffer(buf))
-			proof, root, err := GenProof(blocks, blocks[leafIndex%(256*32*2)])
+			proof, root, err := GenProof(blocks, blocks[leafIndex%CAR_2MIB_NODE_NUM])
 			if err != nil {
 				return nil, err
 			}
