@@ -580,7 +580,6 @@ func VerifyTopProof(cachePath string, randomness uint64) (bool, *mt.Proof, error
 func Proof(randomness uint64, cachePath string) (map[string]mt.Proof, error) {
 
 	// 1. Generate challenge nodes
-	fmt.Println(" Generate challenge nodes Proofs\n 1. Generate challenge nodes")
 	commPs, carSize := LoadSortCommp(cachePath)
 
 	carChallenges, err := GenChallenges(randomness, uint64(len(commPs)), carSize)
@@ -589,7 +588,6 @@ func Proof(randomness uint64, cachePath string) (map[string]mt.Proof, error) {
 	}
 
 	// 2. Get challenge chunk data
-	fmt.Println("2. Get challenge chunk data")
 	challengeProof := make(map[string]mt.Proof)
 	for carIndex, LeavesIndex := range carChallenges {
 		for _, leafIndex := range LeavesIndex {
@@ -603,23 +601,18 @@ func Proof(randomness uint64, cachePath string) (map[string]mt.Proof, error) {
 				return nil, err
 			}
 			// 3. Generate a car chunk proof
-			fmt.Println("3. Generate a car chunk proof")
-
 			blocks := bufferToDataBlocks(*bytes.NewBuffer(buf))
 			proof, root, err := GenProof(blocks, blocks[leafIndex%CAR_2MIB_NODE_NUM])
 			if err != nil {
 				return nil, err
 			}
 
-			fmt.Println("4. Generate cache proofs")
-			// 4. Generate cache proofs
 			cPath := createPath(cachePath, commCid.String()+CACHE_SUFFIX)
 			cacheProof, cacheRoot, err := GenProofFromCache(bytesToDataBlock(root), cPath)
 			if err != nil {
 				return nil, err
 			}
 			// 5. Concat proofs
-			fmt.Println("5. Concat proofs")
 			proof, err = AppendProof(proof, *cacheProof)
 			if err != nil {
 				return nil, err
