@@ -485,7 +485,6 @@ func SaveCommP(rawCommP []byte, carSize uint64, cachePath string) error {
 	}
 
 	*commp = append(*commp, CommpSave{Commp: string(rawCommP), CarSize: carSize})
-
 	storeToFile(commp, cPath)
 
 	return nil
@@ -531,7 +530,6 @@ func GenCommP(buf bytes.Buffer, cacheStart int, cacheLevels uint, cachePath stri
 func GenTopProof(cachePath string) ([]byte, error) {
 
 	commPs, _ := LoadSortCommp(cachePath)
-
 	Leaves := bytesToDataBlocks(commPs)
 	tree, err := mt.New(CommpHashConfig, Leaves)
 	if err != nil {
@@ -540,9 +538,7 @@ func GenTopProof(cachePath string) ([]byte, error) {
 	}
 
 	cache := DatasetMerkletree{Root: tree.Root, Leaves: tree.Leaves}
-
 	cPath := createPath(cachePath, CACHE_TPROOF_PATH)
-
 	err = storeToFile(&cache, cPath)
 	if err != nil {
 		log.Error(err)
@@ -558,12 +554,14 @@ func VerifyTopProof(cachePath string, randomness uint64) (bool, *mt.Proof, error
 	if err := loadFromFile(cPath, &cache); err != nil {
 		return false, nil, err
 	}
+
 	Leaves := bytesToDataBlocks(cache.Leaves)
 	tree, err := mt.New(CommpHashConfig, Leaves)
 	if err != nil {
 		log.Error(err)
 		return false, nil, err
 	}
+
 	if !reflect.DeepEqual(tree.Root, cache.Root) {
 		proof, err := tree.Proof(Leaves[randomness%uint64(len(Leaves))])
 		if err != nil {
@@ -581,7 +579,6 @@ func Proof(randomness uint64, cachePath string) (map[string]mt.Proof, error) {
 
 	// 1. Generate challenge nodes
 	commPs, carSize := LoadSortCommp(cachePath)
-
 	carChallenges, err := GenChallenges(randomness, uint64(len(commPs)), carSize)
 	if err != nil {
 		return nil, err
@@ -600,6 +597,7 @@ func Proof(randomness uint64, cachePath string) (map[string]mt.Proof, error) {
 			if err != nil {
 				return nil, err
 			}
+
 			// 3. Generate a car chunk proof
 			blocks := bufferToDataBlocks(*bytes.NewBuffer(buf))
 			proof, root, err := GenProof(blocks, blocks[leafIndex%CAR_2MIB_NODE_NUM])
@@ -607,11 +605,13 @@ func Proof(randomness uint64, cachePath string) (map[string]mt.Proof, error) {
 				return nil, err
 			}
 
+			// 4. Generate a car cache proof
 			cPath := createPath(cachePath, commCid.String()+CACHE_SUFFIX)
 			cacheProof, cacheRoot, err := GenProofFromCache(bytesToDataBlock(root), cPath)
 			if err != nil {
 				return nil, err
 			}
+
 			// 5. Concat proofs
 			proof, err = AppendProof(proof, *cacheProof)
 			if err != nil {
@@ -640,7 +640,6 @@ func Verify(randomness uint64, cachePath string) (bool, error) {
 	if commPs == nil {
 		return false, errors.New("commPs is nil")
 	}
-
 	carChallenges, err := GenChallenges(randomness, uint64(len(commPs)), carSize)
 	if err != nil {
 		return false, err
