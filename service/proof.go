@@ -223,7 +223,7 @@ func bytesToDataBlock(data []byte) mt.DataBlock {
 }
 
 func bytesToDataBlocks(bt [][]byte) []mt.DataBlock {
-	blocks := make([]mt.DataBlock, len(bt)*NODE_SIZE)
+	blocks := make([]mt.DataBlock, len(bt))
 	for i, data := range bt {
 		blocks[i] = &DataBlock{
 			Data: data[0:NODE_SIZE],

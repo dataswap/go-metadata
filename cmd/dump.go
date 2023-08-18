@@ -22,6 +22,18 @@ func dump(c *cli.Context) error {
 
 	cachePath := c.Args().First()
 
+	// rawCommP := [][]byte{
+	// 	[]byte("aaaa"),
+	// 	[]byte("bbbb"),
+	// 	[]byte("cccc"),
+	// 	[]byte("dddd"),
+	// }
+
+	// metaservice.SaveCommP(rawCommP[0], uint64(66), cachePath)
+	// metaservice.SaveCommP(rawCommP[1], uint64(6677), cachePath)
+	// metaservice.SaveCommP(rawCommP[2], uint64(6688), cachePath)
+	// metaservice.SaveCommP(rawCommP[3], uint64(6699), cachePath)
+
 	commP, carSize := metaservice.LoadSortCommp(cachePath)
 
 	if commP == nil {
