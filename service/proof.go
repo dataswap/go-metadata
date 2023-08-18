@@ -607,7 +607,7 @@ func Proof(randomness uint64, cachePath string) (map[string]mt.Proof, error) {
 
 			// 4. Generate a car cache proof
 			cPath := createPath(cachePath, commCid.String()+CACHE_SUFFIX)
-			cacheProof, cacheRoot, err := GenProofFromCache(bytesToDataBlock(root), cPath)
+			cacheProof, _, err := GenProofFromCache(bytesToDataBlock(root), cPath)
 			if err != nil {
 				return nil, err
 			}
@@ -621,7 +621,11 @@ func Proof(randomness uint64, cachePath string) (map[string]mt.Proof, error) {
 			if proof == nil {
 				return nil, errors.New("proof is nil")
 			}
-			challengeProof[string(cacheRoot)] = *proof
+			leaf, err := blocks[leafIndex%CAR_2MIB_NODE_NUM].Serialize()
+			if err != nil {
+				return nil, err
+			}
+			challengeProof[string(leaf)] = *proof
 		}
 	}
 
