@@ -42,15 +42,11 @@ func proof(c *cli.Context) error {
 	randomness, _ := strconv.ParseUint(c.Args().First(), 10, 64)
 	cachePath := c.Args().Get(1)
 
-	msrv := metaservice.MetaServiceInstance(
+	metaservice.MetaServiceInstance(
 		metaservice.MetaPath(c.String("meta-path")),
 		metaservice.SourceParentPath(c.String("source-parent-path")),
 		metaservice.RawLeaves(c.Bool("raw-leaves")),
 	)
-
-	if err := msrv.LoadMeta(c.String("meta-path")); err != nil {
-		return err
-	}
 
 	_, err := metaservice.Proof(randomness, cachePath)
 	if err != nil {

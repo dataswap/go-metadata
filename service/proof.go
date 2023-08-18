@@ -31,7 +31,8 @@ const (
 	CHUNK_NODES_NUM   = 4
 
 	CAR_32GIB_SIZE      = uint64(1 << 35)
-	CAR_2MIB_CHUNK_SIZE = uint64(1 << 21)
+	CAR_2MIB_CHUNK_SIZE = uint64(127 * CAR_2MIB_NODE_NUM) // source data node = 127, no padding
+	CAR_2MIB_NODE_NUM   = uint64(256 * 32 * 2)
 
 	CACHE_SUFFIX        = ".cache"
 	CACHE_T_SUFFIX      = ".tcache"
@@ -183,6 +184,7 @@ func (f *FileLock) Close() {
 	f.lockFile.Close()
 }
 
+// Padding DataBlock, commp leaf node use
 func bufferToDataBlocks(buf bytes.Buffer) []mt.DataBlock {
 	// padding stack
 	Once.Do(initStackedNulPadding)
@@ -191,7 +193,7 @@ func bufferToDataBlocks(buf bytes.Buffer) []mt.DataBlock {
 
 	// Padding source data
 	if mod := srcLen % SOURCE_CHUNK_SIZE; mod != 0 {
-		// log.Info("total padlen: ", SOURCE_CHUNK_SIZE-mod, ", srcLen: ", srcLen)
+		fmt.Println("total padlen: ", SOURCE_CHUNK_SIZE-mod, ", srcLen: ", srcLen)
 		buf.Write(make([]byte, SOURCE_CHUNK_SIZE-mod))
 		srcLen = buf.Len()
 	}
@@ -213,9 +215,10 @@ func bufferToDataBlocks(buf bytes.Buffer) []mt.DataBlock {
 	return blocks
 }
 
-func bytesToDataBlock(bt []byte) mt.DataBlock {
+// No padding DataBlock
+func bytesToDataBlock(data []byte) mt.DataBlock {
 	return &DataBlock{
-		Data: bt[0:NODE_SIZE],
+		Data: data[0:NODE_SIZE],
 	}
 }
 
@@ -235,15 +238,9 @@ func createPath(filePath string, fileName string) string {
 	return path.Join(filePath, fileName)
 }
 
-func storeToFile(data interface{}, filePath string, append bool) error {
+func storeToFile(data interface{}, filePath string) error {
 
-	var file *os.File
-	var err error
-	if append {
-		file, err = os.OpenFile(filePath, os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
-	} else {
-		file, err = os.Create(filePath)
-	}
+	file, err := os.Create(filePath)
 
 	if err != nil {
 		return err
@@ -351,10 +348,10 @@ func GenCarChallenge(randomness uint64, carChallengeIndex uint64, carChallengesC
 	sha256Func := sha256simd.New()
 
 	bytes := make([]byte, 8)
-	binary.LittleEndian.PutUint64(bytes, randomness)
+	binary.LittleEndian.PutUint64(bytes[:8], randomness)
 	sha256Func.Write(bytes)
 
-	binary.LittleEndian.PutUint64(bytes, carChallengeIndex)
+	binary.LittleEndian.PutUint64(bytes[:8], carChallengeIndex)
 	sha256Func.Write(bytes)
 
 	hash := sha256Func.Sum(nil)
@@ -367,25 +364,23 @@ func GenLeafChallenge(randomness uint64, carIndex uint64, leafChallengeIndex uin
 	sha256Func := sha256simd.New()
 
 	bytes := make([]byte, 8)
-	binary.LittleEndian.PutUint64(bytes, randomness)
+	binary.LittleEndian.PutUint64(bytes[:8], randomness)
 	sha256Func.Write(bytes)
 
-	bytes = bytes[:0]
-	binary.LittleEndian.PutUint64(bytes, carIndex)
+	binary.LittleEndian.PutUint64(bytes[:8], carIndex)
 	sha256Func.Write(bytes)
 
-	bytes = bytes[:0]
-	binary.LittleEndian.PutUint32(bytes, leafChallengeIndex)
+	bytes = make([]byte, 4)
+	binary.LittleEndian.PutUint32(bytes[:4], leafChallengeIndex)
 	sha256Func.Write(bytes)
 
 	hash := sha256Func.Sum(nil)
 
 	leaf_challenge := binary.LittleEndian.Uint64(hash[:8])
-	return leaf_challenge % carSize / NODE_SIZE
+	return leaf_challenge % carSize
 }
 
-func GenProof(buf bytes.Buffer, leaf mt.DataBlock) (*mt.Proof, []byte, error) {
-	blocks := bufferToDataBlocks(buf)
+func GenProof(blocks []mt.DataBlock, leaf mt.DataBlock) (*mt.Proof, []byte, error) {
 
 	tree, err := mt.NewWithPadding(CommpHashConfig, blocks, StackedNulPadding)
 	if err != nil {
@@ -404,8 +399,8 @@ func GenProof(buf bytes.Buffer, leaf mt.DataBlock) (*mt.Proof, []byte, error) {
 func GenProofFromCache(leaf mt.DataBlock, file string) (*mt.Proof, []byte, error) {
 	lc, err := mt.NewLevelCacheFromFile(file)
 	if err != nil {
-		log.Error(err)
-		return nil, nil, nil
+		fmt.Println("NewLevelCacheFromFile error: ", err)
+		return nil, nil, err
 	}
 
 	return lc.Prove(leaf, CommpHashConfig)
@@ -413,6 +408,9 @@ func GenProofFromCache(leaf mt.DataBlock, file string) (*mt.Proof, []byte, error
 
 // Append base and sub proof
 func AppendProof(base *mt.Proof, sub mt.Proof) (*mt.Proof, error) {
+	if base == nil {
+		return nil, errors.New("AppendProof base proof is nil")
+	}
 	return mt.AppendProof(base, sub)
 }
 
@@ -467,8 +465,6 @@ func PadCommP(sourceCommP []byte, sourcePaddedSize, targetPaddedSize uint64) ([]
 // SaveCommP append
 func SaveCommP(rawCommP []byte, carSize uint64, cachePath string) error {
 
-	commp := []CommpSave{}
-	commp = append(commp, CommpSave{Commp: string(rawCommP), CarSize: carSize})
 	cPath := createPath(cachePath, "rawCommP"+CACHE_SUFFIX)
 
 	lock, err := NewFileLock(cachePath)
@@ -483,8 +479,12 @@ func SaveCommP(rawCommP []byte, carSize uint64, cachePath string) error {
 		return err
 	}
 	defer lock.Unlock()
-
-	storeToFile(commp, cPath, true)
+	commp, err := loadCommP(cPath)
+	if err != nil {
+		return err
+	}
+	*commp = append(*commp, CommpSave{Commp: string(rawCommP), CarSize: carSize})
+	storeToFile(commp, cPath)
 
 	return nil
 }
@@ -541,7 +541,7 @@ func GenTopProof(cachePath string) ([]byte, error) {
 
 	cPath := createPath(cachePath, hex.EncodeToString(tree.Root)+CACHE_T_SUFFIX)
 
-	err = storeToFile(cache, cPath, false)
+	err = storeToFile(cache, cPath)
 	if err != nil {
 		log.Error(err)
 		return nil, err
@@ -577,6 +577,7 @@ func VerifyTopProof(cachePath string, randomness uint64) (bool, *mt.Proof, error
 func Proof(randomness uint64, cachePath string) (map[string]mt.Proof, error) {
 
 	// 1. Generate challenge nodes
+	fmt.Println(" Generate challenge nodes Proofs\n 1. Generate challenge nodes")
 	commPs, carSize := LoadSortCommp(cachePath)
 
 	carChallenges, err := GenChallenges(randomness, uint64(len(commPs)), carSize)
@@ -585,43 +586,52 @@ func Proof(randomness uint64, cachePath string) (map[string]mt.Proof, error) {
 	}
 
 	// 2. Get challenge chunk data
+	fmt.Println("2. Get challenge chunk data")
 	challengeProof := make(map[string]mt.Proof)
 	for carIndex, LeavesIndex := range carChallenges {
-		for leafIndex := range LeavesIndex {
+		for _, leafIndex := range LeavesIndex {
 
 			commCid, err := commcid.DataCommitmentV1ToCID(commPs[carIndex])
 			if err != nil {
 				return nil, err
 			}
-			buf, err := GetChallengeChunk(commCid, uint64(leafIndex)/CAR_2MIB_CHUNK_SIZE+1, CAR_2MIB_CHUNK_SIZE)
+			buf, err := GetChallengeChunk(commCid, uint64((leafIndex/CAR_2MIB_CHUNK_SIZE)*CAR_2MIB_CHUNK_SIZE), CAR_2MIB_CHUNK_SIZE)
 			if err != nil {
 				return nil, err
 			}
 			// 3. Generate a car chunk proof
-			leaf := bytesToDataBlock(buf[uint64(leafIndex)%CAR_2MIB_CHUNK_SIZE : uint64(leafIndex)%CAR_2MIB_CHUNK_SIZE+uint64(NODE_SIZE)])
-			proof, root, err := GenProof(*bytes.NewBuffer(buf), leaf)
+			fmt.Println("3. Generate a car chunk proof")
+
+			blocks := bufferToDataBlocks(*bytes.NewBuffer(buf))
+			proof, root, err := GenProof(blocks, blocks[leafIndex%(256*32*2)])
 			if err != nil {
 				return nil, err
 			}
+
+			fmt.Println("4. Generate cache proofs")
 			// 4. Generate cache proofs
-			cPath := createPath(cachePath, hex.EncodeToString(root)+CACHE_SUFFIX)
+			cPath := createPath(cachePath, commCid.String()+CACHE_SUFFIX)
 			cacheProof, cacheRoot, err := GenProofFromCache(bytesToDataBlock(root), cPath)
 			if err != nil {
 				return nil, err
 			}
 			// 5. Concat proofs
+			fmt.Println("5. Concat proofs")
 			proof, err = AppendProof(proof, *cacheProof)
 			if err != nil {
 				return nil, err
 			}
 
+			if proof == nil {
+				return nil, errors.New("proof is nil")
+			}
 			challengeProof[string(cacheRoot)] = *proof
 		}
 	}
 
 	// 6. Store to cache file
 	cPath := createPath(cachePath, "challenges"+CACHE_PROOFS_SUFFIX)
-	storeToFile(challengeProof, cPath, false)
+	storeToFile(challengeProof, cPath)
 
 	return challengeProof, nil
 }
