@@ -37,6 +37,7 @@ const (
 	CACHE_SUFFIX      = ".cache"
 	CACHE_TPROOF_PATH = "topMerkletree.tcache"
 	CACHE_PROOFS_PATH = "challenges.proofs"
+	PROOFS_PATH       = "proofs"
 
 	// MaxLayers is the current maximum height of the rust-fil-proofs proving tree.
 	MaxLayers = uint(31) // result of log2( 64 GiB / 32 )

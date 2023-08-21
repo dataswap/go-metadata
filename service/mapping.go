@@ -25,6 +25,12 @@ import (
 	pb "github.com/ipfs/go-unixfs/pb"
 )
 
+const (
+	METAS_PATH          = "metas"
+	MAPPINGS_PATH       = "mappings"
+	MAPPING_FILE_SUFFIX = ".json"
+)
+
 // MappingService generates the mapping relationship from the source file to the car file.
 type MappingService struct {
 	opts         *Options
@@ -119,7 +125,7 @@ func (ms *MappingService) nodeAction(node ipld.Node) *types.ChunkMapping {
 // Callback entry point for ipld.DAGService,get node information and writing it to a cache
 func (ms *MappingService) dagServerAction(node ipld.Node) {
 	cm := ms.nodeAction(node)
-	ms.insertMeta(cm.Cid, cm, uint64(len(node.RawData())))
+	ms.insertMapping(cm.Cid, cm, uint64(len(node.RawData())))
 }
 
 // Implementing the Helper interface of go-unixfs.
@@ -140,7 +146,7 @@ func (ms *MappingService) helperAction(node ipld.Node, srcPath string, offset ui
 	cm.SrcOffset = offset
 	cm.Size = size
 
-	ms.insertMeta(cm.Cid, cm, uint64(len(node.RawData())))
+	ms.insertMapping(cm.Cid, cm, uint64(len(node.RawData())))
 }
 
 // Wrapping the io.Writer interface to implement mapping recording for writing CAR files.
@@ -161,13 +167,13 @@ func (ms *MappingService) carWriteAfterAction(dstpath string, buf []byte, offset
 			fmt.Printf("meta cid: %s is not exist\n", c.String())
 			return
 		}
-		if err := ms.updateMeta(c, dstpath, offset); err != nil {
+		if err := ms.updateMapping(c, offset); err != nil {
 			fmt.Printf("update meta failed:%s\n", err.Error())
 		}
 	}
 }
 
-func (ms *MappingService) insertMeta(c cid.Cid, cm *types.ChunkMapping, rawSize uint64) error {
+func (ms *MappingService) insertMapping(c cid.Cid, cm *types.ChunkMapping, rawSize uint64) error {
 	ms.lk.Lock()
 	defer ms.lk.Unlock()
 	if _, ok := ms.mappings[c]; ok {
@@ -178,7 +184,7 @@ func (ms *MappingService) insertMeta(c cid.Cid, cm *types.ChunkMapping, rawSize 
 	return nil
 }
 
-func (ms *MappingService) updateMeta(c cid.Cid, dstpath string, offset uint64) error {
+func (ms *MappingService) updateMapping(c cid.Cid, offset uint64) error {
 	ms.lk.Lock()
 	defer ms.lk.Unlock()
 
@@ -405,7 +411,7 @@ func (ms *MappingService) SourceParentPath() string {
 // Use this function to generate data fragments of the CAR file at challenge points when creating challenge proofs.
 func GetChallengeChunk(commCid cid.Cid, offset uint64, size uint64) ([]byte, error) {
 	ms := MappingServiceInstance()
-	metaPath := filepath.Join(ms.MetaPath(), commCid.String()+".json")
+	metaPath := filepath.Join(ms.MetaPath(), commCid.String()+MAPPING_FILE_SUFFIX)
 	if !utils.PathExists(metaPath) {
 		return nil, fmt.Errorf("cant find meta file:%s", metaPath)
 	}

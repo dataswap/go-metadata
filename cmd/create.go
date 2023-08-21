@@ -118,7 +118,7 @@ func CreateCar(cctx *cli.Context) error {
 
 	log.Info("Payload CID: ", encoder.Encode(root))
 
-	return msrv.SaveMetaMappings(cctx.String("mapping-file"), root.String()+".json")
+	return msrv.SaveMetaMappings(cctx.String("mapping-file"), root.String()+metaservice.MAPPING_FILE_SUFFIX)
 }
 
 func CreateFilestore(ctx context.Context, srcPath string, dstPath string, msrv *metaservice.MappingService, parent string) (cid.Cid, error) {
