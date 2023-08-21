@@ -36,12 +36,12 @@ var createCmd = &cli.Command{
 	Action:    CreateCar,
 	Flags: []cli.Flag{
 		&cli.StringFlag{
-			Name:     "json",
-			Usage:    "The meta file to write to",
+			Name:     "mapping-file",
+			Usage:    "The meta mapping file to write to",
 			Required: true,
 		},
 		&cli.StringFlag{
-			Name:     "parent",
+			Name:     "source-parent-path",
 			Usage:    "The parent path",
 			Required: true,
 		},
@@ -67,11 +67,11 @@ func CreateCar(cctx *cli.Context) error {
 	defer os.Remove(tmp) //nolint:errcheck
 	msrv := metaservice.New()
 	// generate and import the UnixFS DAG into a filestore (positional reference) CAR.
-	root, err := CreateFilestore(cctx.Context, inPath, tmp, msrv, cctx.String("parent"))
+	root, err := CreateFilestore(cctx.Context, inPath, tmp, msrv, cctx.String("source-parent-path"))
 	if err != nil {
 		return xerrors.Errorf("failed to import file using unixfs: %w", err)
 	}
-	msrv.SetCarRoot(root)
+	msrv.SetCarDataRoot(root)
 
 	// open the positional reference CAR as a filestore.
 	fs, err := stores.ReadOnlyFilestore(tmp)
@@ -95,7 +95,7 @@ func CreateCar(cctx *cli.Context) error {
 		}},
 		car.MaxTraversalLinks(MaxTraversalLinks),
 	).Write(
-		msrv.GenCarWriter(f, outPath, true),
+		msrv.GenerateCarWriter(f, outPath, true),
 	); err != nil {
 		return xerrors.Errorf("failed to write CAR to output file: %w", err)
 	}
@@ -109,10 +109,10 @@ func CreateCar(cctx *cli.Context) error {
 
 	log.Info("Payload CID: ", encoder.Encode(root))
 
-	return msrv.SaveMeta(cctx.String("json"), root.String()+".json")
+	return msrv.SaveMetaMappings(cctx.String("mapping-file"), root.String()+".json")
 }
 
-func CreateFilestore(ctx context.Context, srcPath string, dstPath string, msrv *metaservice.MetaService, parent string) (cid.Cid, error) {
+func CreateFilestore(ctx context.Context, srcPath string, dstPath string, msrv *metaservice.MappingService, parent string) (cid.Cid, error) {
 	src, err := os.Open(srcPath)
 	if err != nil {
 		return cid.Undef, xerrors.Errorf("failed to open input file: %w", err)
@@ -186,7 +186,7 @@ func CreateFilestore(ctx context.Context, srcPath string, dstPath string, msrv *
 
 const UnixfsLinksPerLevel = 1024
 
-func Build(ctx context.Context, reader io.Reader, into bstore.Blockstore, filestore bool, srcPath string, msrv *metaservice.MetaService, parent string) (cid.Cid, error) {
+func Build(ctx context.Context, reader io.Reader, into bstore.Blockstore, filestore bool, srcPath string, msrv *metaservice.MappingService, parent string) (cid.Cid, error) {
 	b, err := CidBuilder()
 	if err != nil {
 		return cid.Undef, err
@@ -206,8 +206,8 @@ func Build(ctx context.Context, reader io.Reader, into bstore.Blockstore, filest
 
 	spl, err := libs.NewSplitter(reader, int64(libs.UnixfsChunkSize), srcPath, parent)
 	if msrv != nil {
-		params.Dagserv = msrv.GenDagService(bufdag)
-		db, err = msrv.GenHelper(&params, spl)
+		params.Dagserv = msrv.GenerateDagService(bufdag)
+		db, err = msrv.GenerateHelper(&params, spl)
 	} else {
 		db, err = params.New(spl)
 	}

@@ -8,8 +8,8 @@ import (
 )
 
 var tproofCmd = &cli.Command{
-	Name:      "tproof",
-	Usage:     "compute proof of commPs",
+	Name:      "top-proof",
+	Usage:     "compute top proof of commPs",
 	ArgsUsage: "<cachePath>",
 	Action:    tProof,
 }

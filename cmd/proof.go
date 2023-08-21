@@ -42,7 +42,7 @@ func proof(c *cli.Context) error {
 	randomness, _ := strconv.ParseUint(c.Args().First(), 10, 64)
 	cachePath := c.Args().Get(1)
 
-	metaservice.MetaServiceInstance(
+	metaservice.MappingServiceInstance(
 		metaservice.MetaPath(c.String("meta-path")),
 		metaservice.SourceParentPath(c.String("source-parent-path")),
 		metaservice.RawLeaves(c.Bool("raw-leaves")),

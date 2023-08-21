@@ -1,9 +1,9 @@
 package metaservice
 
 type Options struct {
-	rawLeaves        bool
-	metaPath         string
-	sourceParentPath string
+	rawLeaves        bool   //Are the leaf nodes of the DAG of raw type?
+	metaPath         string //paths for the mapping file and proof file.
+	sourceParentPath string //Root directory of the source data.
 }
 
 type Option func(o *Options)

@@ -6,8 +6,8 @@ import (
 	pb "github.com/ipfs/go-unixfs/pb"
 )
 
-// chunk meta
-type ChunkMeta struct {
+// chunk meta mapping
+type ChunkMapping struct {
 	SrcPath   string           `json:"srcpath"`   // the path of chunk's source data
 	SrcOffset uint64           `json:"srcoffset"` // the offset of chunk data in source data
 	Size      uint64           `json:"size"`      // chunk data size
@@ -19,11 +19,11 @@ type ChunkMeta struct {
 	Links     []*ipld.Link     `json:links` // chunks of node
 }
 
-func (cm *ChunkMeta) ChunkRange() (uint64, uint64) {
+func (cm *ChunkMapping) ChunkRangeInCar() (uint64, uint64) {
 	return cm.DstOffset, cm.DstOffset + cm.ChunkSize
 }
 
-func (cm *ChunkMeta) SrcRanage() (string, uint64, uint64) {
+func (cm *ChunkMapping) ChunkRanageInSource() (string, uint64, uint64) {
 	return cm.SrcPath, cm.SrcOffset, cm.SrcOffset + cm.Size
 }
 
@@ -34,7 +34,7 @@ type SrcData struct {
 	Size   uint64
 }
 
-type Meta struct {
-	DagRoot cid.Cid      `json:"dagroot"`
-	Metas   []*ChunkMeta `json:"metas"`
+type Mapping struct {
+	DataRoot cid.Cid         `json:"dagroot"`
+	Mappings []*ChunkMapping `json:"mappings"`
 }

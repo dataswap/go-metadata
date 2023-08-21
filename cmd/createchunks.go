@@ -13,13 +13,13 @@ var createChunksCmd = &cli.Command{
 	Action:    CreateChunks,
 	Flags: []cli.Flag{
 		&cli.StringFlag{
-			Name:     "json",
-			Usage:    "The meta file",
+			Name:     "mapping-file",
+			Usage:    "The meta mapping file to write to",
 			Required: true,
 		},
 		&cli.StringFlag{
-			Name:     "parent",
-			Usage:    "The meta file",
+			Name:     "source-parent-path",
+			Usage:    "The source data parent path",
 			Required: true,
 		},
 	},
@@ -35,12 +35,12 @@ func CreateChunks(cctx *cli.Context) error {
 
 	msrv := metaservice.New()
 
-	if err := msrv.LoadMeta(cctx.String("json")); err != nil {
+	if err := msrv.LoadMetaMappings(cctx.String("mapping-file")); err != nil {
 		return err
 	}
-	metas, err := msrv.GetAllChunkMetas()
+	metas, err := msrv.GetAllChunkMappings()
 	if err != nil {
 		return err
 	}
-	return msrv.GenerateChunksFromMeta(outPath, cctx.String("parent"), metas)
+	return msrv.GenerateChunksFromMappings(outPath, cctx.String("source-parent-path"), metas)
 }
