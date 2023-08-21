@@ -47,7 +47,7 @@ func TestGenCommP(t *testing.T) {
 	buf := bytes.Buffer{}
 	sc.Write(&buf)
 
-	rawCommP, pieceSize, err := GenCommP(buf, cachePath)
+	rawCommP, pieceSize, err := GenCommP(buf, cachePath, 0)
 	if err != nil {
 		t.Errorf("GenCommP err")
 	}
@@ -130,7 +130,7 @@ func saveCommpCache() {
 
 		cachePath := "../testdata/output"
 
-		rawCommP, _, err := GenCommP(buf, cachePath)
+		rawCommP, _, err := GenCommP(buf, cachePath, 0)
 		if err != nil {
 			fmt.Println("GenCommP err")
 		}

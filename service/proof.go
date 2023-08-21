@@ -187,7 +187,8 @@ func (f *FileLock) Close() {
 }
 
 // Padding DataBlock, commp leaf node use
-func bufferToDataBlocks(buf bytes.Buffer) []mt.DataBlock {
+// targetPaddedSize = 0 use default paddedSize
+func bufferToDataBlocks(buf bytes.Buffer, targetPaddedSize uint64) ([]mt.DataBlock, uint64, error) {
 	// padding stack
 	Once.Do(initStackedNulPadding)
 
@@ -214,7 +215,48 @@ func bufferToDataBlocks(buf bytes.Buffer) []mt.DataBlock {
 		}
 	}
 
-	return blocks
+	sourcePaddedSize := uint64((srcLen / SOURCE_CHUNK_SIZE) * SLAB_CHUNK_SIZE)
+	if targetPaddedSize != 0 {
+		blocks, err := paddingToDataBlocks(blocks, sourcePaddedSize, targetPaddedSize)
+		if err != nil {
+			return nil, 0, err
+		}
+		return blocks, sourcePaddedSize, nil
+	}
+
+	return blocks, sourcePaddedSize, nil
+}
+
+func paddingToDataBlocks(dataBlocks []mt.DataBlock, sourcePaddedSize, targetPaddedSize uint64) ([]mt.DataBlock, error) {
+	if bits.OnesCount64(sourcePaddedSize) != 1 {
+		return nil, xerrors.Errorf("source padded size %d is not a power of 2", sourcePaddedSize)
+	}
+	if bits.OnesCount64(targetPaddedSize) != 1 {
+		return nil, xerrors.Errorf("target padded size %d is not a power of 2", targetPaddedSize)
+	}
+	if sourcePaddedSize > targetPaddedSize {
+		return nil, xerrors.Errorf("source padded size %d larger than target padded size %d", sourcePaddedSize, targetPaddedSize)
+	}
+	if sourcePaddedSize < 128 {
+		return nil, xerrors.Errorf("source padded size %d smaller than the minimum of 128 bytes", sourcePaddedSize)
+	}
+	if targetPaddedSize > MaxPieceSize {
+		return nil, xerrors.Errorf("target padded size %d larger than Filecoin maximum of %d bytes", targetPaddedSize, MaxPieceSize)
+	}
+
+	// noop
+	if sourcePaddedSize == targetPaddedSize {
+		return dataBlocks, nil
+	}
+
+	s := bits.TrailingZeros64(sourcePaddedSize)
+	t := bits.TrailingZeros64(targetPaddedSize)
+
+	for ; s < t; s++ {
+		dataBlocks = append(dataBlocks, &DataBlock{Data: StackedNulPadding[s-5]})
+	}
+
+	return dataBlocks, nil
 }
 
 // No padding DataBlock
@@ -507,13 +549,17 @@ func SaveCommP(rawCommP []byte, carSize uint64, cachePath string) error {
 	return nil
 }
 
-// GenCommP is the commP generate
-func GenCommP(buf bytes.Buffer, cachePath string) ([]byte, uint64, error) {
+// GenCommP is the commP generate. targetPaddedSize = 0 is use default padded size
+func GenCommP(buf bytes.Buffer, cachePath string, targetPaddedSize uint64) ([]byte, uint64, error) {
 
-	blocks := bufferToDataBlocks(buf)
+	blocks, paddedPieceSize, err := bufferToDataBlocks(buf, targetPaddedSize)
+	if err != nil {
+		return nil, 0, err
+	}
+
 	tree, _ := mt.NewWithPadding(CommpHashConfig, blocks, StackedNulPadding)
 
-	paddedPieceSize := SumChunkCount * SLAB_CHUNK_SIZE
+	// paddedPieceSize := SumChunkCount * SLAB_CHUNK_SIZE
 	// hacky round-up-to-next-pow2
 	if bits.OnesCount64(paddedPieceSize) != 1 {
 		paddedPieceSize = 1 << uint(64-bits.LeadingZeros64(paddedPieceSize))
@@ -613,7 +659,10 @@ func Proof(randomness uint64, cachePath string) (map[string]mt.Proof, error) {
 			}
 
 			// 3. Generate a car chunk proof
-			blocks := bufferToDataBlocks(*bytes.NewBuffer(buf))
+			blocks, _, err := bufferToDataBlocks(*bytes.NewBuffer(buf), 0)
+			if err != nil {
+				return nil, err
+			}
 			proof, root, err := GenProof(blocks, blocks[leafIndex%carChunkNum])
 			if err != nil {
 				return nil, err
