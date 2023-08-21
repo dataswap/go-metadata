@@ -1,0 +1,54 @@
+name: Go
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        submodules: recursive
+
+    - name: Cache Go dependencies
+      id: cache-go-deps
+      uses: actions/cache@v3
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/*.go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.20.1'
+
+    - name: Set Git Config
+      run: |
+        go env -w GOPRIVATE=github.com/dataswap/*
+        go env -w GOPROXY=direct
+        go env -w GONOSUMDB=github.com/dataswap/*
+        echo "machine github.com" > ~/.netrc
+        echo "login ${{ secrets.ACCESS }}" >> ~/.netrc
+        echo "password ${{ secrets.ACCESS_TOKEN }}" >> ~/.netrc
+
+    - name: Build
+      run: |
+        go build -o meta -v ./cmd
+
+    - name: Test
+      run: |
+        go test -v ./service
+
+    - name: Save Go dependencies cache
+      if: steps.cache-go-deps.outputs.cache-hit != 'true'
+      run: |
+        mkdir -p ~/go/pkg
+        cp -r ~/go/pkg/mod ~/go/pkg/mod-backup
