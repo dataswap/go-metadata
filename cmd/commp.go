@@ -62,7 +62,7 @@ func commpCar(c *cli.Context) error {
 	buf := bytes.Buffer{}
 	sc.Write(&buf)
 
-	rawCommP, pieceSize, err := metaservice.GenCommP(buf, cacheStart, uint(cacheLevels), cachePath)
+	rawCommP, pieceSize, err := metaservice.GenCommP(buf, cacheStart, uint(cacheLevels), cachePath, 0)
 	if err != nil {
 		return err
 	}
