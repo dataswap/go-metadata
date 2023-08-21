@@ -10,10 +10,19 @@ import (
 )
 
 var proofCmd = &cli.Command{
-	Name:      "proof",
+	Name:  "proof",
+	Usage: "compute proof of merkle-tree",
+	Subcommands: []*cli.Command{
+		challengeProofCmd,
+		datasetProofCmd,
+	},
+}
+
+var challengeProofCmd = &cli.Command{
+	Name:      "chanllenge-proof",
 	Usage:     "compute proof of merkle-tree",
 	ArgsUsage: "<randomness> <cachePath>",
-	Action:    proof,
+	Action:    challengeProof,
 	Flags: []cli.Flag{
 		&cli.StringFlag{
 			Name:     "meta-path",
@@ -33,8 +42,8 @@ var proofCmd = &cli.Command{
 	},
 }
 
-// proof is a command to compute proof of commps.
-func proof(c *cli.Context) error {
+// challengeProof is a command to compute proof of commps.
+func challengeProof(c *cli.Context) error {
 	if c.Args().Len() != 2 {
 		return xerrors.Errorf("Args must be specified 2 nums!")
 	}
@@ -50,6 +59,34 @@ func proof(c *cli.Context) error {
 
 	_, err := metaservice.Proof(randomness, cachePath)
 	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+var datasetProofCmd = &cli.Command{
+	Name:      "dataset-proof",
+	Usage:     "compute dataset proof of commPs",
+	ArgsUsage: "<cachePath>",
+	Action:    datasetProof,
+}
+
+// datasetProof is a command to compute proof of commps.
+func datasetProof(c *cli.Context) error {
+	if c.Args().Len() != 1 {
+		return xerrors.Errorf("Args must be specified 1 nums!")
+	}
+
+	cachePath := c.Args().First()
+
+	_, err := metaservice.GenTopProof(cachePath)
+	if err != nil {
+		return err
+	}
+
+	bl, _, err := metaservice.VerifyTopProof(cachePath, 1)
+	if !bl || err != nil {
 		return err
 	}
 

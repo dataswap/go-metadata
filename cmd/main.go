@@ -18,12 +18,9 @@ func main() {
 		Commands: []*cli.Command{
 			createCmd,
 			listCmd,
-			commpCmd,
 			proofCmd,
 			verifyCmd,
-			tproofCmd,
-			createChunksCmd,
-			dumpCmd,
+			toolsCmd,
 		},
 	}
 

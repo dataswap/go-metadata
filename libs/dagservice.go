@@ -14,7 +14,7 @@ func DefaultDagServiceAction(c cid.Cid, nodeType pb.Data_DataType) {}
 
 type WrapDagService struct {
 	ds ipld.DAGService
-
+	// Adding a callback function to ipld.DAGService:
 	cb DagServiceAction
 }
 
@@ -26,12 +26,14 @@ func WrappedDagService(dagService ipld.DAGService, cb DagServiceAction) ipld.DAG
 }
 
 func (wds *WrapDagService) Add(ctx context.Context, node ipld.Node) error {
+	// When adding a node to DAGService, invoke the callback function to notify that the node has been added.
 	wds.cb(node)
 	return wds.ds.Add(ctx, node)
 }
 
 func (wds *WrapDagService) AddMany(ctx context.Context, nodes []ipld.Node) error {
 	for _, node := range nodes {
+		// When adding a node to DAGService, invoke the callback function to notify that the node has been added.
 		wds.cb(node)
 	}
 	return wds.ds.AddMany(ctx, nodes)

@@ -11,6 +11,8 @@ import (
 	pb "github.com/ipfs/go-unixfs/pb"
 )
 
+// Helper callback function, when Helper calls Add to add a node to DAGService,
+// it passes the mapping information of the node to MappingService.
 type HelperAction func(node ipld.Node, srcPath string, offset uint64, size uint64)
 
 func DefaultHelperAction(node ipld.Node, srcPath string, offset uint64, size uint64) {
@@ -44,6 +46,7 @@ func WrappedDagBuilder(params *helpers.DagBuilderParams, spl EnhancedSplitter, h
 	}, nil
 }
 
+// Rewrite 'NewLeafDataNode' to cache the 'SliceMeta' information retrieved from the 'EnhancedSplitter'
 func (w *WrapDagBuilder) NewLeafDataNode(fsNodeType pb.Data_DataType) (node ipld.Node, dataSize uint64, err error) {
 	fileData, meta, err := w.next()
 	if err != nil {
@@ -63,11 +66,14 @@ func (w *WrapDagBuilder) NewLeafDataNode(fsNodeType pb.Data_DataType) (node ipld
 
 	w.lk.Lock()
 	defer w.lk.Unlock()
+
+	// cache the 'SliceMeta' information retrieved from the 'EnhancedSplitter'
 	w.metas[node.Cid()] = meta
 
 	return node, dataSize, nil
 }
 
+// Rewrite the 'Add' method to invoke a callback function to pass back the mapping information of the node.
 func (w *WrapDagBuilder) Add(node ipld.Node) error {
 	w.lk.RLock()
 	defer w.lk.RUnlock()
@@ -78,9 +84,7 @@ func (w *WrapDagBuilder) Add(node ipld.Node) error {
 	return w.dserv.Add(context.TODO(), node)
 }
 
-// prepareNext consumes the next item from the splitter and puts it
-// in the nextData field. it is idempotent-- if nextData is full
-// it will do nothing.
+// Reimplement the 'prepareNext' function to make the helper retrieve data from the 'EnhancedSplitter' interface.
 func (w *WrapDagBuilder) prepareNext() {
 	// if we already have data waiting to be consumed, we're ready
 	if w.nextData != nil || w.recvdErr != nil {
@@ -93,7 +97,7 @@ func (w *WrapDagBuilder) prepareNext() {
 	}
 }
 
-// Done returns whether or not we're done consuming the incoming data.
+// Rewrite the 'Done' function to make the helper retrieve data from the 'EnhancedSplitter' interface.
 func (w *WrapDagBuilder) Done() bool {
 	// ensure we have an accurate perspective on data
 	// as `done` this may be called before `next`.
@@ -104,9 +108,7 @@ func (w *WrapDagBuilder) Done() bool {
 	return w.nextData == nil
 }
 
-// Next returns the next chunk of data to be inserted into the dag
-// if it returns nil, that signifies that the stream is at an end, and
-// that the current building operation should finish.
+// Rewrite the 'Next' function to make the helper retrieve data from the 'EnhancedSplitter' interface.
 func (w *WrapDagBuilder) Next() ([]byte, error) {
 	w.prepareNext() // idempotent
 	d := w.nextData

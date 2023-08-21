@@ -30,7 +30,16 @@ import (
 var MaxTraversalLinks uint64 = 32 * (1 << 20)
 
 var createCmd = &cli.Command{
-	Name:      "create",
+	Name:  "create",
+	Usage: "Create a car file",
+	Subcommands: []*cli.Command{
+		createCarCmd,
+		createChunksCmd,
+	},
+}
+
+var createCarCmd = &cli.Command{
+	Name:      "car",
 	Usage:     "Create a car file",
 	ArgsUsage: "<inputPath> <outputPath>",
 	Action:    CreateCar,
@@ -241,4 +250,43 @@ func CidBuilder() (cid.Builder, error) {
 		Limit:   126,
 	}
 	return b, nil
+}
+
+var createChunksCmd = &cli.Command{
+	Name:      "chunks",
+	Usage:     "Create car chunks",
+	ArgsUsage: "<outputPath>",
+	Action:    CreateChunks,
+	Flags: []cli.Flag{
+		&cli.StringFlag{
+			Name:     "mapping-file",
+			Usage:    "The meta mapping file to write to",
+			Required: true,
+		},
+		&cli.StringFlag{
+			Name:     "source-parent-path",
+			Usage:    "The source data parent path",
+			Required: true,
+		},
+	},
+}
+
+// Refer to the boostx code at github.com/filecoin-project/boost/cmd/boostx/utils_cmd.go for functional validation.
+func CreateChunks(cctx *cli.Context) error {
+	if cctx.Args().Len() != 1 {
+		return xerrors.Errorf("usage: create-chunks <outputPath>")
+	}
+
+	outPath := cctx.Args().First()
+
+	msrv := metaservice.New()
+
+	if err := msrv.LoadMetaMappings(cctx.String("mapping-file")); err != nil {
+		return err
+	}
+	metas, err := msrv.GetAllChunkMappings()
+	if err != nil {
+		return err
+	}
+	return msrv.GenerateChunksFromMappings(outPath, cctx.String("source-parent-path"), metas)
 }

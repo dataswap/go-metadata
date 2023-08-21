@@ -9,12 +9,15 @@ import (
 
 const UnixfsChunkSize uint64 = 1 << 20 //Deafault chunksize 2M
 
+// Reading data while obtaining source data information, including the source data file path, offset, and size:
 type SliceMeta struct {
 	Path   string
 	Offset uint64
 	Size   uint64
 }
 
+// Defining the EnhancedSplitter interface as an extension of the Splitter interface,
+// which reads data while also returning source data path, offset, and size
 type EnhancedSplitter interface {
 	chunker.Splitter
 	NextBytesWithMeta() ([]byte, *SliceMeta, error)
@@ -43,11 +46,14 @@ func NewSplitter(r io.Reader, size int64, srcPath string, parentPath string) (En
 func (ss *sliceSplitter) NextBytesWithMeta() ([]byte, *SliceMeta, error) {
 	buf, err := ss.NextBytes()
 	size := len(buf)
+
+	//Constructing a source data SliceMeta
 	m := &SliceMeta{
 		Path:   ss.srcPath,
 		Offset: ss.offset,
 		Size:   uint64(size),
 	}
+
 	ss.offset += uint64(size)
 	return buf, m, err
 }

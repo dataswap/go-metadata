@@ -4,6 +4,7 @@ import (
 	"io"
 )
 
+// The callback function for WrapWriter.
 type WriteAfterAction func(path string, buf []byte, offset uint64)
 
 type WriteBeforeAction func([]byte, io.Writer) ([]byte, error)
@@ -12,6 +13,8 @@ func DefaultWriteAfterAction(path string, buf []byte, offset uint64) {}
 
 func DefaultWriteBeforeAction(buf []byte, w io.Writer) ([]byte, error) { return buf, nil }
 
+// Encapsulate io.Writer. When the Write method is executed,
+// invoke a callback function to notify MappingService about the data that has been written.
 type WrapWriter struct {
 	io.Writer
 	path   string
