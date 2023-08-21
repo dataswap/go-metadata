@@ -360,6 +360,7 @@ func (ms *MappingService) GenerateNodeWithoutData(m *types.ChunkMapping, cidBuil
 		} else {
 			blockSize = cm.BlockSize
 		}
+
 		if err := fsNode.AddLinkChildToFsNode(link, blockSize); err != nil {
 			return nil, err
 		}
@@ -394,6 +395,9 @@ func (ms *MappingService) GenerateNodeFromSource(path string, srcParent string, 
 	}
 
 	node = helpers.ProcessFileStore(node, m.Size)
+	if _, ok := ms.mappings[node.Cid()]; !ok {
+		return nil, fmt.Errorf("generate new node from source failed:%s", err.Error())
+	}
 
 	return node, nil
 }

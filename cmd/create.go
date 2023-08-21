@@ -10,7 +10,6 @@ import (
 	"github.com/filecoin-project/boost-gfm/stores"
 	"github.com/ipfs/go-blockservice"
 	"github.com/ipfs/go-cid"
-	"github.com/ipfs/go-cidutil"
 	"github.com/ipfs/go-cidutil/cidenc"
 	bstore "github.com/ipfs/go-ipfs-blockstore"
 	offline "github.com/ipfs/go-ipfs-exchange-offline"
@@ -207,7 +206,7 @@ func Build(ctx context.Context, reader io.Reader, into bstore.Blockstore, filest
 	var db helpers.Helper
 	params := helpers.DagBuilderParams{
 		Maxlinks:   UnixfsLinksPerLevel,
-		RawLeaves:  true,
+		RawLeaves:  false,
 		CidBuilder: b,
 		Dagserv:    bufdag,
 		NoCopy:     filestore,
@@ -244,12 +243,8 @@ func CidBuilder() (cid.Builder, error) {
 	if err != nil {
 		return nil, xerrors.Errorf("failed to initialize UnixFS CID Builder: %w", err)
 	}
-	prefix.MhType = DefaultHashFunction
-	b := cidutil.InlineBuilder{
-		Builder: prefix,
-		Limit:   126,
-	}
-	return b, nil
+
+	return prefix, nil
 }
 
 var createChunksCmd = &cli.Command{

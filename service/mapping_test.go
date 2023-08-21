@@ -210,3 +210,46 @@ func TestMappingService_SaveAndLoadMetaMappings(t *testing.T) {
 
 	// Add more assertions based on your specific data and use case.
 }
+
+func TestMappingService_GetChunkMappings(t *testing.T) {
+	// Create a new instance of MappingService
+	ms := New() // You might need to provide any required options
+
+	if err := ms.LoadMetaMappings("../testdata/output/metas/bafybeiekw7iaz4zjgfq3gdcyh2zh77m3j5ns75w7lyu5nqq3bgoccjgzmq.json"); err != nil {
+		t.Fatalf("Failed to load mappings: %v", err)
+	}
+	// Call the GetChunkMappings function with test data
+	dstOffset := uint64(15653)
+
+	dstSize := uint64(140)
+	mappings, err := ms.GetChunkMappings(dstOffset, dstSize)
+	if err != nil {
+		t.Fatalf("Failed to get chunks : %v", err)
+	}
+	if len(mappings) != 4 {
+		t.Fatalf("Failed to get chunks num: 4 ,but  %d", len(mappings))
+	}
+}
+
+func TestMappingService_GenerateChunksFromMappings(t *testing.T) {
+	// Create a new instance of MappingService
+	ms := New() // You might need to provide any required options
+
+	if err := ms.LoadMetaMappings("../testdata/output/metas/bafybeiekw7iaz4zjgfq3gdcyh2zh77m3j5ns75w7lyu5nqq3bgoccjgzmq.json"); err != nil {
+		t.Fatalf("Failed to load mappings: %v", err)
+	}
+
+	// Set up the test parameters
+	path := "../testdata/test_output.car"
+	srcParent := "../testdata"
+	mappings, err := ms.GetAllChunkMappings()
+	if err != nil {
+		t.Fatalf("Failed to get chunks: %v", err)
+	}
+
+	// Call the GenerateChunksFromMappings function with test data
+	err = ms.GenerateChunksFromMappings(path, srcParent, mappings)
+	if err != nil {
+		t.Fatalf("Failed to generate chunks car: %v", err)
+	}
+}
