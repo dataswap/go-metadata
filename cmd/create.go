@@ -45,8 +45,8 @@ var createCarCmd = &cli.Command{
 	Action:    CreateCar,
 	Flags: []cli.Flag{
 		&cli.StringFlag{
-			Name:     "mapping-file",
-			Usage:    "The meta mapping file to write to",
+			Name:     "mapping-path",
+			Usage:    "The meta mapping path to write to",
 			Required: true,
 		},
 		&cli.StringFlag{
@@ -118,7 +118,7 @@ func CreateCar(cctx *cli.Context) error {
 
 	log.Info("Payload CID: ", encoder.Encode(root))
 
-	return msrv.SaveMetaMappings(cctx.String("mapping-file"), root.String()+metaservice.MAPPING_FILE_SUFFIX)
+	return msrv.SaveMetaMappings(cctx.String("mapping-path"), root.String()+metaservice.MAPPING_FILE_SUFFIX)
 }
 
 func CreateFilestore(ctx context.Context, srcPath string, dstPath string, msrv *metaservice.MappingService, parent string) (cid.Cid, error) {
