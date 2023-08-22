@@ -1,6 +1,7 @@
 package metaservice
 
 import (
+	"crypto/md5"
 	"encoding/binary"
 	"io/ioutil"
 	"os"
@@ -208,12 +209,11 @@ func TestMappingService_SaveAndLoadMetaMappings(t *testing.T) {
 	// You can perform assertions to compare the loaded mappings with the expected mappings.
 	assert.Equal(t, len(ms.mappings), 2, "Loaded mappings count doesn't match expected count")
 
-	// Add more assertions based on your specific data and use case.
 }
 
 func TestMappingService_GetChunkMappings(t *testing.T) {
 	// Create a new instance of MappingService
-	ms := New() // You might need to provide any required options
+	ms := New()
 
 	if err := ms.LoadMetaMappings("../testdata/output/metas/bafybeiekw7iaz4zjgfq3gdcyh2zh77m3j5ns75w7lyu5nqq3bgoccjgzmq.json"); err != nil {
 		t.Fatalf("Failed to load mappings: %v", err)
@@ -233,15 +233,21 @@ func TestMappingService_GetChunkMappings(t *testing.T) {
 
 func TestMappingService_GenerateChunksFromMappings(t *testing.T) {
 	// Create a new instance of MappingService
-	ms := New() // You might need to provide any required options
+	ms := New()
 
 	if err := ms.LoadMetaMappings("../testdata/output/metas/bafybeiekw7iaz4zjgfq3gdcyh2zh77m3j5ns75w7lyu5nqq3bgoccjgzmq.json"); err != nil {
 		t.Fatalf("Failed to load mappings: %v", err)
 	}
+	tempDir, err := os.MkdirTemp("", "")
+	if err != nil {
+		t.Fatalf("Failed to create tmp dir : %v", err)
+	}
+	defer os.RemoveAll(tempDir)
 
-	// Set up the test parameters
-	path := "../testdata/test_output.car"
+	path := filepath.Join(tempDir, "test_output.car")
+
 	srcParent := "../testdata"
+
 	mappings, err := ms.GetAllChunkMappings()
 	if err != nil {
 		t.Fatalf("Failed to get chunks: %v", err)
@@ -251,5 +257,27 @@ func TestMappingService_GenerateChunksFromMappings(t *testing.T) {
 	err = ms.GenerateChunksFromMappings(path, srcParent, mappings)
 	if err != nil {
 		t.Fatalf("Failed to generate chunks car: %v", err)
+	}
+	buf, err := ioutil.ReadFile(path)
+	if err != nil {
+		t.Fatalf("Failed to read chunks : %v", err)
+	}
+
+	hash := md5.New()
+	hash.Write(buf)
+
+	chunksHashValue := hash.Sum(nil)
+
+	carBuf, err := ioutil.ReadFile("../testdata/output/test.car")
+	if err != nil {
+		t.Fatalf("Failed to read car : %v", err)
+	}
+
+	carHash := md5.New()
+	carHash.Write(carBuf)
+
+	carHashValue := carHash.Sum(nil)
+	if string(chunksHashValue) != string(carHashValue) {
+		t.Fatalf("The generated chunks are inconsistent with the car generated directly from the source file.")
 	}
 }
