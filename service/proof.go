@@ -31,13 +31,18 @@ const (
 	CHUNK_NODES_NUM   = 4
 
 	CAR_32GIB_SIZE      = uint64(1 << 35)
-	CAR_2MIB_CHUNK_SIZE = uint64(127 * CAR_2MIB_NODE_NUM) // source data node = 127, no padding
-	CAR_2MIB_NODE_NUM   = uint64(256 * 32 * 2)
+	CAR_2MIB_CHUNK_SIZE = uint64(SOURCE_CHUNK_SIZE * CAR_2MIB_NODE_NUM) // source data node = 127, no padding
+	CAR_512B_CHUNK_SIZE = uint64(SOURCE_CHUNK_SIZE * CAR_512B_NODE_NUM) // source data node = 127, no padding
 
-	CACHE_SUFFIX      = ".cache"
-	CACHE_TPROOF_PATH = "topMerkletree.tcache"
-	CACHE_PROOFS_PATH = "challenges.proofs"
-	PROOFS_PATH       = "proofs"
+	CAR_2MIB_NODE_NUM = uint64(1 << 20 * 2 / SLAB_CHUNK_SIZE)
+	CAR_512B_NODE_NUM = uint64(1 << 9 / SLAB_CHUNK_SIZE)
+
+	CAR_2MIB_CACHE_LAYER_START = 16
+	CAR_512B_CACHE_LAYER_START = 4
+	CACHE_SUFFIX               = ".cache"
+	CACHE_TPROOF_PATH          = "topMerkletree.tcache"
+	CACHE_PROOFS_PATH          = "challenges.proofs"
+	PROOFS_PATH                = "proofs"
 
 	// MaxLayers is the current maximum height of the rust-fil-proofs proving tree.
 	MaxLayers = uint(31) // result of log2( 64 GiB / 32 )
@@ -61,11 +66,6 @@ var (
 type DatasetMerkletree struct {
 	Root   []byte
 	Leaves [][]byte
-}
-
-type CommpSave struct {
-	Commp   string
-	CarSize uint64
 }
 
 // DataBlock is a implementation of the DataBlock interface.
@@ -155,8 +155,6 @@ func initStackedNulPadding() {
 		StackedNulPadding[i][31] &= 0x3F
 	}
 }
-
-// ------------------------------------------------------------
 
 //### internal functions
 
@@ -270,21 +268,19 @@ func loadFromFile(filePath string, target interface{}) error {
 	return nil
 }
 
-func loadCommP(cachePath string) (*[]CommpSave, error) {
-	commp := []CommpSave{}
+func loadCommP(cachePath string) (*map[string]uint64, error) {
+	commp := map[string]uint64{}
 	if err := loadFromFile(cachePath, &commp); err != nil {
 		return nil, err
 	}
 	return &commp, nil
 }
 
-func sortCommPSlices(c []CommpSave) ([][]byte, []uint64) {
+func sortCommPSlices(c map[string]uint64) ([][]byte, []uint64) {
 
-	m := make(map[string]uint64, len(c))
 	commp := make([][]byte, 0, len(c))
-	for _, v := range c {
-		m[v.Commp] = v.CarSize
-		commp = append(commp, []byte(v.Commp))
+	for k := range c {
+		commp = append(commp, []byte(k))
 	}
 
 	sort.Slice(commp, func(i, j int) bool {
@@ -293,13 +289,11 @@ func sortCommPSlices(c []CommpSave) ([][]byte, []uint64) {
 
 	size := make([]uint64, 0, len(commp))
 	for _, v := range commp {
-		size = append(size, m[string(v)])
+		size = append(size, c[string(v)])
 	}
 
 	return commp, size
 }
-
-// ------------------------------------------------------------
 
 func LoadSortCommp(cachePath string) ([][]byte, []uint64) {
 	cPath := createPath(cachePath, "rawCommP"+CACHE_SUFFIX)
@@ -311,7 +305,7 @@ func LoadSortCommp(cachePath string) ([][]byte, []uint64) {
 	return sortCommPSlices(*c)
 }
 
-// Car leaf challenge count
+// Car leaf challenge count.
 func LeafChallengeCount(carSize uint64) uint32 {
 	if carSize >= CAR_32GIB_SIZE {
 		return 172
@@ -320,11 +314,28 @@ func LeafChallengeCount(carSize uint64) uint32 {
 	}
 }
 
+// Car challenge count
 func CarChallengeCount(carNum uint64) uint64 {
 	if carNum < 1000 {
 		return 1
 	} else {
 		return carNum/1000 + 1
+	}
+}
+
+func getCarChunkParams(carSize uint64) (uint64, uint64) {
+	if carSize < CAR_2MIB_CHUNK_SIZE {
+		return CAR_512B_CHUNK_SIZE, CAR_512B_NODE_NUM
+	} else {
+		return CAR_2MIB_CHUNK_SIZE, CAR_2MIB_NODE_NUM
+	}
+}
+
+func getCarCacheLayerStart(carSize uint64) int {
+	if carSize < CAR_2MIB_CHUNK_SIZE {
+		return CAR_512B_CACHE_LAYER_START
+	} else {
+		return CAR_2MIB_CACHE_LAYER_START
 	}
 }
 
@@ -415,9 +426,8 @@ func AppendProof(base *mt.Proof, sub mt.Proof) (*mt.Proof, error) {
 	return mt.AppendProof(base, sub)
 }
 
-// ------------------------------------------------------------
-
 // ### export functions
+
 // PadCommP is experimental, do not use it.
 func PadCommP(sourceCommP []byte, sourcePaddedSize, targetPaddedSize uint64) ([]byte, error) {
 
@@ -463,7 +473,7 @@ func PadCommP(sourceCommP []byte, sourcePaddedSize, targetPaddedSize uint64) ([]
 	return out, nil
 }
 
-// SaveCommP append
+// SaveCommP append. struct format: map{commmp:carSize}
 func SaveCommP(rawCommP []byte, carSize uint64, cachePath string) error {
 
 	cPath := createPath(cachePath, "rawCommP"+CACHE_SUFFIX)
@@ -482,17 +492,18 @@ func SaveCommP(rawCommP []byte, carSize uint64, cachePath string) error {
 	defer lock.Unlock()
 	commp, _ := loadCommP(cPath)
 	if commp == nil { // first is nil
-		commp = &[]CommpSave{}
+		commp = &map[string]uint64{}
 	}
 
-	*commp = append(*commp, CommpSave{Commp: string(rawCommP), CarSize: carSize})
+	(*commp)[string(rawCommP)] = carSize
+
 	storeToFile(commp, cPath)
 
 	return nil
 }
 
 // GenCommP is the commP generate
-func GenCommP(buf bytes.Buffer, cacheStart int, cacheLevels uint, cachePath string) ([]byte, uint64, error) {
+func GenCommP(buf bytes.Buffer, cachePath string) ([]byte, uint64, error) {
 
 	blocks := bufferToDataBlocks(buf)
 	tree, _ := mt.NewWithPadding(CommpHashConfig, blocks, StackedNulPadding)
@@ -503,24 +514,18 @@ func GenCommP(buf bytes.Buffer, cacheStart int, cacheLevels uint, cachePath stri
 		paddedPieceSize = 1 << uint(64-bits.LeadingZeros64(paddedPieceSize))
 	}
 
-	if cacheStart >= 0 {
-		var lc *mt.LevelCache
-		var err error
-		if cacheLevels == 0 {
-			lc, err = mt.NewLevelCache(tree, cacheStart, tree.Depth-cacheStart)
-		} else {
-			lc, err = mt.NewLevelCache(tree, cacheStart, int(cacheLevels))
-		}
+	cacheStart := getCarCacheLayerStart(uint64(buf.Len()))
 
-		if err != nil {
-			log.Error(err)
-			return nil, 0, err
-		}
-		cPath := createPath(cachePath, hex.EncodeToString(tree.Root)+CACHE_SUFFIX)
-		if err = lc.StoreToFile(cPath); err != nil {
-			log.Error(err)
-			return nil, 0, err
-		}
+	lc, err := mt.NewLevelCache(tree, cacheStart, tree.Depth-cacheStart)
+
+	if err != nil {
+		log.Error(err)
+		return nil, 0, err
+	}
+	cPath := createPath(cachePath, hex.EncodeToString(tree.Root)+CACHE_SUFFIX)
+	if err = lc.StoreToFile(cPath); err != nil {
+		log.Error(err)
+		return nil, 0, err
 	}
 
 	return tree.Root, paddedPieceSize, nil
@@ -549,6 +554,7 @@ func GenTopProof(cachePath string) ([]byte, error) {
 	return tree.Root, nil
 }
 
+// Verify commPs Merkle-Tree proof
 func VerifyTopProof(cachePath string, randomness uint64) (bool, *mt.Proof, error) {
 	cache := DatasetMerkletree{}
 	cPath := createPath(cachePath, CACHE_TPROOF_PATH)
@@ -588,20 +594,22 @@ func Proof(randomness uint64, cachePath string) (map[string]mt.Proof, error) {
 	// 2. Get challenge chunk data
 	challengeProof := make(map[string]mt.Proof)
 	for carIndex, LeavesIndex := range carChallenges {
+
+		carChunkSize, carChunkNum := getCarChunkParams(carSize[carIndex])
 		for _, leafIndex := range LeavesIndex {
 
 			commCid, err := commcid.DataCommitmentV1ToCID(commPs[carIndex])
 			if err != nil {
 				return nil, err
 			}
-			buf, err := GetChallengeChunk(commCid, uint64((leafIndex/CAR_2MIB_CHUNK_SIZE)*CAR_2MIB_CHUNK_SIZE), CAR_2MIB_CHUNK_SIZE)
+			buf, err := GetChallengeChunk(commCid, uint64((leafIndex/carChunkSize)*carChunkSize), carChunkSize)
 			if err != nil {
 				return nil, err
 			}
 
 			// 3. Generate a car chunk proof
 			blocks := bufferToDataBlocks(*bytes.NewBuffer(buf))
-			proof, root, err := GenProof(blocks, blocks[leafIndex%CAR_2MIB_NODE_NUM])
+			proof, root, err := GenProof(blocks, blocks[leafIndex%carChunkNum])
 			if err != nil {
 				return nil, err
 			}
@@ -622,7 +630,7 @@ func Proof(randomness uint64, cachePath string) (map[string]mt.Proof, error) {
 			if proof == nil {
 				return nil, errors.New("proof is nil")
 			}
-			leaf, err := blocks[leafIndex%CAR_2MIB_NODE_NUM].Serialize()
+			leaf, err := blocks[leafIndex%carChunkNum].Serialize()
 			if err != nil {
 				return nil, err
 			}
