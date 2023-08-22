@@ -221,7 +221,7 @@ func bufferToDataBlocks(buf bytes.Buffer, targetPaddedSize uint64) ([]mt.DataBlo
 		if err != nil {
 			return nil, 0, err
 		}
-		return blocks, sourcePaddedSize, nil
+		return blocks, targetPaddedSize, nil
 	}
 
 	return blocks, sourcePaddedSize, nil
