@@ -34,8 +34,11 @@ const (
 	CAR_2MIB_CHUNK_SIZE = uint64(SOURCE_CHUNK_SIZE * CAR_2MIB_NODE_NUM) // source data node = 127, no padding
 	CAR_512B_CHUNK_SIZE = uint64(SOURCE_CHUNK_SIZE * CAR_512B_NODE_NUM) // source data node = 127, no padding
 
-	CAR_2MIB_NODE_NUM = uint64(1 << 20 * 2 / SLAB_CHUNK_SIZE)
-	CAR_512B_NODE_NUM = uint64(1 << 9 / SLAB_CHUNK_SIZE)
+	CAR_2MIB_NODE_NUM = uint64(1 << 20 * 2 / SLAB_CHUNK_SIZE) // = 2MIB / SLAB_CHUNK_SIZE
+	CAR_512B_NODE_NUM = uint64(1 << 9 / SLAB_CHUNK_SIZE)      // = 512B / SLAB_CHUNK_SIZE
+
+	LEAF_CHALLENGE_MAX_COUNT = 172
+	LEAF_CHALLENGE_MIN_COUNT = 2
 
 	CAR_2MIB_CACHE_LAYER_START = 16
 	CAR_512B_CACHE_LAYER_START = 4
@@ -295,6 +298,8 @@ func sortCommPSlices(c map[string]uint64) ([][]byte, []uint64) {
 	return commp, size
 }
 
+//### public functions
+
 func LoadSortCommp(cachePath string) ([][]byte, []uint64) {
 	cPath := createPath(cachePath, "rawCommP"+CACHE_SUFFIX)
 	c, err := loadCommP(cPath)
@@ -308,9 +313,9 @@ func LoadSortCommp(cachePath string) ([][]byte, []uint64) {
 // Car leaf challenge count.
 func LeafChallengeCount(carSize uint64) uint32 {
 	if carSize >= CAR_32GIB_SIZE {
-		return 172
+		return LEAF_CHALLENGE_MAX_COUNT
 	} else {
-		return 2
+		return LEAF_CHALLENGE_MIN_COUNT
 	}
 }
 
