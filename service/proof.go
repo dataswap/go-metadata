@@ -370,7 +370,7 @@ func CarChallengeCount(carNum uint64) uint64 {
 	}
 }
 
-func getCarChunkParams(carSize uint64) (uint64, uint64) {
+func CarChunkParams(carSize uint64) (uint64, uint64) {
 	if carSize < CAR_2MIB_CHUNK_SIZE {
 		return CAR_512B_CHUNK_SIZE, CAR_512B_NODE_NUM
 	} else {
@@ -378,7 +378,7 @@ func getCarChunkParams(carSize uint64) (uint64, uint64) {
 	}
 }
 
-func getCarCacheLayerStart(carSize uint64) int {
+func CarCacheLayerStart(carSize uint64) int {
 	if carSize < CAR_2MIB_CHUNK_SIZE {
 		return CAR_512B_CACHE_LAYER_START
 	} else {
@@ -565,7 +565,7 @@ func GenCommP(buf bytes.Buffer, cachePath string, targetPaddedSize uint64) ([]by
 		paddedPieceSize = 1 << uint(64-bits.LeadingZeros64(paddedPieceSize))
 	}
 
-	cacheStart := getCarCacheLayerStart(uint64(buf.Len()))
+	cacheStart := CarCacheLayerStart(uint64(buf.Len()))
 
 	lc, err := mt.NewLevelCache(tree, cacheStart, tree.Depth-cacheStart)
 
@@ -646,7 +646,7 @@ func Proof(randomness uint64, cachePath string) (map[string]mt.Proof, error) {
 	challengeProof := make(map[string]mt.Proof)
 	for carIndex, LeavesIndex := range carChallenges {
 
-		carChunkSize, carChunkNum := getCarChunkParams(carSize[carIndex])
+		carChunkSize, carChunkNum := CarChunkParams(carSize[carIndex])
 		for _, leafIndex := range LeavesIndex {
 
 			commCid, err := commcid.DataCommitmentV1ToCID(commPs[carIndex])
