@@ -1,0 +1,421 @@
+{
+	"dagroot": {
+		"/": "bafybeicdsaojbbmf3dum3abtpdfvnm5vjan2yobzh74d22qxwklc64tzce"
+	},
+	"mappings": [
+		{
+			"srcpath": "",
+			"srcoffset": 0,
+			"size": 0,
+			"dstoffset": 59,
+			"chunksize": 965,
+			"blocksize": 927,
+			"nodetype": 2,
+			"cid": {
+				"/": "bafybeicdsaojbbmf3dum3abtpdfvnm5vjan2yobzh74d22qxwklc64tzce"
+			},
+			"Links": [
+				{
+					"Name": "",
+					"Size": 28,
+					"Cid": {
+						"/": "bafybeidi2vtba7sdswtszq46qoqcnxeg6mk54tdkwknk77v2xodo4qflay"
+					}
+				},
+				{
+					"Name": "",
+					"Size": 28,
+					"Cid": {
+						"/": "bafybeiafqa36onkwcrl3i3hgt5yxdsan4zkjtwtjmo2jdxuen26qouyov4"
+					}
+				},
+				{
+					"Name": "",
+					"Size": 28,
+					"Cid": {
+						"/": "bafybeidesz67dkm6amnwqmpqo3ukztucytv53cmklbxhpvezfgnev5qpxu"
+					}
+				},
+				{
+					"Name": "",
+					"Size": 28,
+					"Cid": {
+						"/": "bafybeidfgqfesavoyxsmglmj2i6nxlz5m3ijndxiaqc4ah6ruc557v3m2u"
+					}
+				},
+				{
+					"Name": "",
+					"Size": 28,
+					"Cid": {
+						"/": "bafybeihptaub7fcvavfcpeznfojiapohs5yt5eioczhj4d3n3cermix2pi"
+					}
+				},
+				{
+					"Name": "",
+					"Size": 28,
+					"Cid": {
+						"/": "bafybeihltzpivyz6l3mmmt7aygp5ddtwzqwi6lagkw2pq7qhrxdjg6hztu"
+					}
+				},
+				{
+					"Name": "",
+					"Size": 28,
+					"Cid": {
+						"/": "bafybeihhbu7jzvstvh6kh6s6t3e77gbmkxqoj4q3pbjpe35eq3hpscubki"
+					}
+				},
+				{
+					"Name": "",
+					"Size": 28,
+					"Cid": {
+						"/": "bafybeifqwo4khez3edhwtwslpshkegqlxxp2hhoe4mldthw2jpyr32xioe"
+					}
+				},
+				{
+					"Name": "",
+					"Size": 28,
+					"Cid": {
+						"/": "bafybeidebfiwh6ewwng7yak2fnrgjgs3o3eowrnczovyg5fci3f5ijawum"
+					}
+				},
+				{
+					"Name": "",
+					"Size": 28,
+					"Cid": {
+						"/": "bafybeid7wyxxztvymjun7xwzoowuo3hv2yfygtrb7ictmb367zzvkq63ba"
+					}
+				},
+				{
+					"Name": "",
+					"Size": 28,
+					"Cid": {
+						"/": "bafybeifzdwjtd3ytzwdky4dfg6aqdzpr3jq5imzdasf5yje6fasjkqrywi"
+					}
+				},
+				{
+					"Name": "",
+					"Size": 28,
+					"Cid": {
+						"/": "bafybeignco2x4i5qnoztbxmfkj5mnh2pu7ab5nqssgcg4gdi3ascooufee"
+					}
+				},
+				{
+					"Name": "",
+					"Size": 28,
+					"Cid": {
+						"/": "bafybeian4s2ll3nsd7vungclpmc4mmp6e7z35notqhjykk3hn2pug4cx7y"
+					}
+				},
+				{
+					"Name": "",
+					"Size": 28,
+					"Cid": {
+						"/": "bafybeia2fzxgq6le742pxppl4wplksjusntqzmfl4welzywrsxn74r7uvm"
+					}
+				},
+				{
+					"Name": "",
+					"Size": 28,
+					"Cid": {
+						"/": "bafybeiczoj3erw24n5svqk6h47zkqojkiiextps5sseoirwtbvz3skpu5u"
+					}
+				},
+				{
+					"Name": "",
+					"Size": 28,
+					"Cid": {
+						"/": "bafybeih5qcgbbk3q2rgr6lu3edzeeeyw7vw6c6pvo3xqqax2mflgsk7cfu"
+					}
+				},
+				{
+					"Name": "",
+					"Size": 28,
+					"Cid": {
+						"/": "bafybeidokek2374w4jgsiqravjqwsaolh5wvvco47q67y546lsn6pfdt4a"
+					}
+				},
+				{
+					"Name": "",
+					"Size": 28,
+					"Cid": {
+						"/": "bafybeiglfnibsnh3lkrxtioinw5p57klssxjrvdhctcxek57dpokkstree"
+					}
+				},
+				{
+					"Name": "",
+					"Size": 28,
+					"Cid": {
+						"/": "bafybeiersbph7ulfncmdkpgxrf3xsuppbiqg6c6el45udycxzlyanewwty"
+					}
+				},
+				{
+					"Name": "",
+					"Size": 15,
+					"Cid": {
+						"/": "bafybeieortc5olt6vzm66wqcngxonaal2nvyeg4zvyin45utjmzvwl545u"
+					}
+				}
+			]
+		},
+		{
+			"srcpath": "input/test1.txt",
+			"srcoffset": 0,
+			"size": 20,
+			"dstoffset": 1024,
+			"chunksize": 65,
+			"blocksize": 28,
+			"nodetype": 2,
+			"cid": {
+				"/": "bafybeidi2vtba7sdswtszq46qoqcnxeg6mk54tdkwknk77v2xodo4qflay"
+			},
+			"Links": null
+		},
+		{
+			"srcpath": "input/test1.txt",
+			"srcoffset": 20,
+			"size": 20,
+			"dstoffset": 1089,
+			"chunksize": 65,
+			"blocksize": 28,
+			"nodetype": 2,
+			"cid": {
+				"/": "bafybeiafqa36onkwcrl3i3hgt5yxdsan4zkjtwtjmo2jdxuen26qouyov4"
+			},
+			"Links": null
+		},
+		{
+			"srcpath": "input/test1.txt",
+			"srcoffset": 40,
+			"size": 20,
+			"dstoffset": 1154,
+			"chunksize": 65,
+			"blocksize": 28,
+			"nodetype": 2,
+			"cid": {
+				"/": "bafybeidesz67dkm6amnwqmpqo3ukztucytv53cmklbxhpvezfgnev5qpxu"
+			},
+			"Links": null
+		},
+		{
+			"srcpath": "input/test1.txt",
+			"srcoffset": 60,
+			"size": 20,
+			"dstoffset": 1219,
+			"chunksize": 65,
+			"blocksize": 28,
+			"nodetype": 2,
+			"cid": {
+				"/": "bafybeidfgqfesavoyxsmglmj2i6nxlz5m3ijndxiaqc4ah6ruc557v3m2u"
+			},
+			"Links": null
+		},
+		{
+			"srcpath": "input/test1.txt",
+			"srcoffset": 80,
+			"size": 20,
+			"dstoffset": 1284,
+			"chunksize": 65,
+			"blocksize": 28,
+			"nodetype": 2,
+			"cid": {
+				"/": "bafybeihptaub7fcvavfcpeznfojiapohs5yt5eioczhj4d3n3cermix2pi"
+			},
+			"Links": null
+		},
+		{
+			"srcpath": "input/test1.txt",
+			"srcoffset": 100,
+			"size": 20,
+			"dstoffset": 1349,
+			"chunksize": 65,
+			"blocksize": 28,
+			"nodetype": 2,
+			"cid": {
+				"/": "bafybeihltzpivyz6l3mmmt7aygp5ddtwzqwi6lagkw2pq7qhrxdjg6hztu"
+			},
+			"Links": null
+		},
+		{
+			"srcpath": "input/test1.txt",
+			"srcoffset": 120,
+			"size": 20,
+			"dstoffset": 1414,
+			"chunksize": 65,
+			"blocksize": 28,
+			"nodetype": 2,
+			"cid": {
+				"/": "bafybeihhbu7jzvstvh6kh6s6t3e77gbmkxqoj4q3pbjpe35eq3hpscubki"
+			},
+			"Links": null
+		},
+		{
+			"srcpath": "input/test1.txt",
+			"srcoffset": 140,
+			"size": 20,
+			"dstoffset": 1479,
+			"chunksize": 65,
+			"blocksize": 28,
+			"nodetype": 2,
+			"cid": {
+				"/": "bafybeifqwo4khez3edhwtwslpshkegqlxxp2hhoe4mldthw2jpyr32xioe"
+			},
+			"Links": null
+		},
+		{
+			"srcpath": "input/test1.txt",
+			"srcoffset": 160,
+			"size": 20,
+			"dstoffset": 1544,
+			"chunksize": 65,
+			"blocksize": 28,
+			"nodetype": 2,
+			"cid": {
+				"/": "bafybeidebfiwh6ewwng7yak2fnrgjgs3o3eowrnczovyg5fci3f5ijawum"
+			},
+			"Links": null
+		},
+		{
+			"srcpath": "input/test1.txt",
+			"srcoffset": 180,
+			"size": 20,
+			"dstoffset": 1609,
+			"chunksize": 65,
+			"blocksize": 28,
+			"nodetype": 2,
+			"cid": {
+				"/": "bafybeid7wyxxztvymjun7xwzoowuo3hv2yfygtrb7ictmb367zzvkq63ba"
+			},
+			"Links": null
+		},
+		{
+			"srcpath": "input/test1.txt",
+			"srcoffset": 200,
+			"size": 20,
+			"dstoffset": 1674,
+			"chunksize": 65,
+			"blocksize": 28,
+			"nodetype": 2,
+			"cid": {
+				"/": "bafybeifzdwjtd3ytzwdky4dfg6aqdzpr3jq5imzdasf5yje6fasjkqrywi"
+			},
+			"Links": null
+		},
+		{
+			"srcpath": "input/test1.txt",
+			"srcoffset": 220,
+			"size": 20,
+			"dstoffset": 1739,
+			"chunksize": 65,
+			"blocksize": 28,
+			"nodetype": 2,
+			"cid": {
+				"/": "bafybeignco2x4i5qnoztbxmfkj5mnh2pu7ab5nqssgcg4gdi3ascooufee"
+			},
+			"Links": null
+		},
+		{
+			"srcpath": "input/test1.txt",
+			"srcoffset": 240,
+			"size": 20,
+			"dstoffset": 1804,
+			"chunksize": 65,
+			"blocksize": 28,
+			"nodetype": 2,
+			"cid": {
+				"/": "bafybeian4s2ll3nsd7vungclpmc4mmp6e7z35notqhjykk3hn2pug4cx7y"
+			},
+			"Links": null
+		},
+		{
+			"srcpath": "input/test1.txt",
+			"srcoffset": 260,
+			"size": 20,
+			"dstoffset": 1869,
+			"chunksize": 65,
+			"blocksize": 28,
+			"nodetype": 2,
+			"cid": {
+				"/": "bafybeia2fzxgq6le742pxppl4wplksjusntqzmfl4welzywrsxn74r7uvm"
+			},
+			"Links": null
+		},
+		{
+			"srcpath": "input/test1.txt",
+			"srcoffset": 280,
+			"size": 20,
+			"dstoffset": 1934,
+			"chunksize": 65,
+			"blocksize": 28,
+			"nodetype": 2,
+			"cid": {
+				"/": "bafybeiczoj3erw24n5svqk6h47zkqojkiiextps5sseoirwtbvz3skpu5u"
+			},
+			"Links": null
+		},
+		{
+			"srcpath": "input/test1.txt",
+			"srcoffset": 300,
+			"size": 20,
+			"dstoffset": 1999,
+			"chunksize": 65,
+			"blocksize": 28,
+			"nodetype": 2,
+			"cid": {
+				"/": "bafybeih5qcgbbk3q2rgr6lu3edzeeeyw7vw6c6pvo3xqqax2mflgsk7cfu"
+			},
+			"Links": null
+		},
+		{
+			"srcpath": "input/test1.txt",
+			"srcoffset": 320,
+			"size": 20,
+			"dstoffset": 2064,
+			"chunksize": 65,
+			"blocksize": 28,
+			"nodetype": 2,
+			"cid": {
+				"/": "bafybeidokek2374w4jgsiqravjqwsaolh5wvvco47q67y546lsn6pfdt4a"
+			},
+			"Links": null
+		},
+		{
+			"srcpath": "input/test1.txt",
+			"srcoffset": 340,
+			"size": 20,
+			"dstoffset": 2129,
+			"chunksize": 65,
+			"blocksize": 28,
+			"nodetype": 2,
+			"cid": {
+				"/": "bafybeiglfnibsnh3lkrxtioinw5p57klssxjrvdhctcxek57dpokkstree"
+			},
+			"Links": null
+		},
+		{
+			"srcpath": "input/test1.txt",
+			"srcoffset": 360,
+			"size": 20,
+			"dstoffset": 2194,
+			"chunksize": 65,
+			"blocksize": 28,
+			"nodetype": 2,
+			"cid": {
+				"/": "bafybeiersbph7ulfncmdkpgxrf3xsuppbiqg6c6el45udycxzlyanewwty"
+			},
+			"Links": null
+		},
+		{
+			"srcpath": "input/test1.txt",
+			"srcoffset": 380,
+			"size": 7,
+			"dstoffset": 2259,
+			"chunksize": 52,
+			"blocksize": 15,
+			"nodetype": 2,
+			"cid": {
+				"/": "bafybeieortc5olt6vzm66wqcngxonaal2nvyeg4zvyin45utjmzvwl545u"
+			},
+			"Links": null
+		}
+	]
+}
