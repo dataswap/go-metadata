@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"strconv"
 
 	metaservice "github.com/dataswap/go-metadata/service"
 	commcid "github.com/filecoin-project/go-fil-commcid"
@@ -29,7 +28,7 @@ var toolsCmd = &cli.Command{
 var commpCmd = &cli.Command{
 	Name:      "commp",
 	Usage:     "compute commp CID(PieceCID)",
-	ArgsUsage: "<inputCarPath> <inputCarRoot> <cacheStart> <cacheLevels> <cachePath>",
+	ArgsUsage: "<inputCarPath> <inputCarRoot> <cachePath>",
 	Action:    commpCar,
 }
 
@@ -49,20 +48,7 @@ func commpCar(c *cli.Context) error {
 		return err
 	}
 
-	cacheStart := -1
-	cacheLevels := 0
-	cachePath := ""
-	if c.Args().Len() == 5 {
-		cacheStart, err = strconv.Atoi(c.Args().Get(2))
-		if err != nil {
-			return err
-		}
-		cacheLevels, err = strconv.Atoi(c.Args().Get(3))
-		if err != nil {
-			return err
-		}
-		cachePath = c.Args().Get(4)
-	}
+	cachePath := c.Args().Get(2)
 
 	selector := allSelector()
 	sc := car.NewSelectiveCar(c.Context, bs, []car.Dag{{Root: cid, Selector: selector}})
@@ -70,7 +56,7 @@ func commpCar(c *cli.Context) error {
 	buf := bytes.Buffer{}
 	sc.Write(&buf)
 
-	rawCommP, pieceSize, err := metaservice.GenCommP(buf, cacheStart, uint(cacheLevels), cachePath)
+	rawCommP, pieceSize, err := metaservice.GenCommP(buf, cachePath)
 	if err != nil {
 		return err
 	}
