@@ -215,7 +215,7 @@ func TestMappingService_GetChunkMappings(t *testing.T) {
 	// Create a new instance of MappingService
 	ms := New()
 
-	if err := ms.LoadMetaMappings("../testdata/output/metas/bafybeiekw7iaz4zjgfq3gdcyh2zh77m3j5ns75w7lyu5nqq3bgoccjgzmq.json"); err != nil {
+	if err := ms.LoadMetaMappings("../testdata/output/metas/baga6ea4seaqopy46styyssotgxlat2vh3ksiukehesphcvoprskkq74o2yudmoi.json"); err != nil {
 		t.Fatalf("Failed to load mappings: %v", err)
 	}
 	// Call the GetChunkMappings function with test data
@@ -235,7 +235,7 @@ func TestMappingService_GenerateChunksFromMappings(t *testing.T) {
 	// Create a new instance of MappingService
 	ms := New()
 
-	if err := ms.LoadMetaMappings("../testdata/output/metas/bafybeiekw7iaz4zjgfq3gdcyh2zh77m3j5ns75w7lyu5nqq3bgoccjgzmq.json"); err != nil {
+	if err := ms.LoadMetaMappings("../testdata/output/metas/baga6ea4seaqopy46styyssotgxlat2vh3ksiukehesphcvoprskkq74o2yudmoi.json"); err != nil {
 		t.Fatalf("Failed to load mappings: %v", err)
 	}
 	tempDir, err := os.MkdirTemp("", "")
@@ -268,7 +268,7 @@ func TestMappingService_GenerateChunksFromMappings(t *testing.T) {
 
 	chunksHashValue := hash.Sum(nil)
 
-	carBuf, err := ioutil.ReadFile("../testdata/output/test.car")
+	carBuf, err := ioutil.ReadFile("../testdata/output/baga6ea4seaqopy46styyssotgxlat2vh3ksiukehesphcvoprskkq74o2yudmoi.car")
 	if err != nil {
 		t.Fatalf("Failed to read car : %v", err)
 	}
