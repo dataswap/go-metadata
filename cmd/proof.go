@@ -57,6 +57,8 @@ func challengeProof(c *cli.Context) error {
 		metaservice.RawLeaves(c.Bool("raw-leaves")),
 	)
 
+	log.Info("\r\nrandomness: ", randomness)
+
 	_, err := metaservice.Proof(randomness, cachePath)
 	if err != nil {
 		return err
