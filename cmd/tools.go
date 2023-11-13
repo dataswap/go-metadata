@@ -22,6 +22,7 @@ var toolsCmd = &cli.Command{
 	Subcommands: []*cli.Command{
 		commpCmd,
 		dumpCmd,
+		dumpChallengesProofCmd,
 	},
 }
 
@@ -107,5 +108,30 @@ func dump(c *cli.Context) error {
 		log.Info("\nError: commP is nil")
 	}
 	log.Info("\ncommP: ", commP, "\ncarSize: ", carSize)
+	log.Infof("\ncommP: %x", commP)
+	return nil
+}
+
+var dumpChallengesProofCmd = &cli.Command{
+	Name:      "dumpChallengesProof",
+	Usage:     "dump dumpChallengesProof info",
+	ArgsUsage: "<cachePath>",
+	Action:    dumpChallengesProof,
+}
+
+// dumpChallengesProof is a command to dump challenges Proof info.
+func dumpChallengesProof(c *cli.Context) error {
+	if c.Args().Len() != 1 {
+		return xerrors.Errorf("Args must be specified 1 num!")
+	}
+
+	proofs := metaservice.LoadChallengesProofs(c.Args().First())
+
+	if proofs == nil {
+		log.Info("\nError: proofs is nil")
+		return nil
+	}
+	log.Info("\nproofs: ", proofs)
+	log.Infof("\nproofs: %x", proofs)
 	return nil
 }
