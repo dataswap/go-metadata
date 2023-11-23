@@ -153,7 +153,7 @@ func CreateFilestore(ctx context.Context, srcPath string, dstPath string, msrv *
 		return cid.Undef, xerrors.Errorf("failed to create temporary filestore: %w", err)
 	}
 
-	finalRoot1, err := Build(ctx, file, fstore, true, srcPath, nil, parent)
+	finalRoot1, err := Build(ctx, file, fstore, true, srcPath, 0, nil, parent)
 	if err != nil {
 		_ = fstore.Close()
 		return cid.Undef, xerrors.Errorf("failed to import file to store to compute root: %w", err)
@@ -175,7 +175,7 @@ func CreateFilestore(ctx context.Context, srcPath string, dstPath string, msrv *
 		return cid.Undef, xerrors.Errorf("failed to rewind file: %w", err)
 	}
 
-	finalRoot2, err := Build(ctx, file, bs, true, srcPath, msrv, parent)
+	finalRoot2, err := Build(ctx, file, bs, true, srcPath, 0, msrv, parent)
 	if err != nil {
 		_ = bs.Close()
 		return cid.Undef, xerrors.Errorf("failed to create UnixFS DAG with carv2 blockstore: %w", err)
@@ -194,7 +194,7 @@ func CreateFilestore(ctx context.Context, srcPath string, dstPath string, msrv *
 
 const UnixfsLinksPerLevel = 1024
 
-func Build(ctx context.Context, reader io.Reader, into bstore.Blockstore, filestore bool, srcPath string, msrv *metaservice.MappingService, parent string) (cid.Cid, error) {
+func Build(ctx context.Context, reader io.Reader, into bstore.Blockstore, filestore bool, srcPath string, chunkStart uint64, msrv *metaservice.MappingService, parent string) (cid.Cid, error) {
 	b, err := CidBuilder()
 	if err != nil {
 		return cid.Undef, err
@@ -212,7 +212,7 @@ func Build(ctx context.Context, reader io.Reader, into bstore.Blockstore, filest
 		NoCopy:     filestore,
 	}
 
-	spl, err := libs.NewSplitter(reader, int64(libs.UnixfsChunkSize), srcPath, parent)
+	spl, err := libs.NewSplitter(reader, int64(libs.UnixfsChunkSize), srcPath, parent, chunkStart)
 	if msrv != nil {
 		params.Dagserv = msrv.GenerateDagService(bufdag)
 		db, err = msrv.GenerateHelper(&params, spl)

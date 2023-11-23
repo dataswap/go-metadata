@@ -7,6 +7,7 @@ require (
 	github.com/dustin/go-humanize v1.0.1
 	github.com/filecoin-project/boost-gfm v1.26.7
 	github.com/filecoin-project/go-fil-commcid v0.1.0
+	github.com/filecoin-project/go-fil-commp-hashhash v0.2.0
 	github.com/ipfs/go-blockservice v0.5.0
 	github.com/ipfs/go-cid v0.4.1
 	github.com/ipfs/go-cidutil v0.1.0
@@ -64,7 +65,6 @@ require (
 	github.com/filecoin-project/go-bitfield v0.2.4 // indirect
 	github.com/filecoin-project/go-crypto v0.0.1 // indirect
 	github.com/filecoin-project/go-data-transfer v1.15.4-boost // indirect
-	github.com/filecoin-project/go-fil-commp-hashhash v0.2.0 // indirect
 	github.com/filecoin-project/go-hamt-ipld/v3 v3.1.0 // indirect
 	github.com/filecoin-project/go-padreader v0.0.1 // indirect
 	github.com/filecoin-project/go-state-types v0.11.1 // indirect
@@ -213,6 +213,6 @@ require (
 	storj.io/uplink v1.10.0 // indirect
 )
 
-replace github.com/ipfs/go-unixfs => github.com/dataswap/go-unixfs v0.4.7-0.20230816102825-8616cfcb522d
+replace github.com/ipfs/go-unixfs => github.com/dataswap/go-unixfs v0.4.8-0.20230821121547-dd2cd70ed7f5
 
 replace github.com/txaty/go-merkletree => github.com/dataswap/go-merkletree v0.1.16-0.20230815040153-1fec7617de00

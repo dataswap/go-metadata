@@ -396,7 +396,7 @@ func (ms *MappingService) GenerateNodeFromSource(path string, srcParent string, 
 
 	node = helpers.ProcessFileStore(node, m.Size)
 	if _, ok := ms.mappings[node.Cid()]; !ok {
-		return nil, fmt.Errorf("generate new node from source failed:%s", err.Error())
+		return nil, fmt.Errorf("generate new node from source failed,new cid:%s", node.Cid().String())
 	}
 
 	return node, nil

@@ -26,20 +26,22 @@ type EnhancedSplitter interface {
 type sliceSplitter struct {
 	chunker.Splitter
 	// source data's path
-	srcPath string
-	offset  uint64
+	srcPath    string
+	offset     uint64
+	chunkStart uint64
 }
 
-func NewSplitter(r io.Reader, size int64, srcPath string, parentPath string) (EnhancedSplitter, error) {
+func NewSplitter(r io.Reader, size int64, srcPath string, parentPath string, chunkStart uint64) (EnhancedSplitter, error) {
 	path, err := filepath.Rel(filepath.Clean(parentPath), filepath.Clean(srcPath))
 	if err != nil {
 		return nil, err
 	}
 	spl := chunker.NewSizeSplitter(r, size)
 	return &sliceSplitter{
-		Splitter: spl,
-		srcPath:  path,
-		offset:   0,
+		Splitter:   spl,
+		srcPath:    path,
+		offset:     0,
+		chunkStart: chunkStart,
 	}, nil
 }
 
@@ -50,7 +52,7 @@ func (ss *sliceSplitter) NextBytesWithMeta() ([]byte, *SliceMeta, error) {
 	//Constructing a source data SliceMeta
 	m := &SliceMeta{
 		Path:   ss.srcPath,
-		Offset: ss.offset,
+		Offset: ss.offset + ss.chunkStart,
 		Size:   uint64(size),
 	}
 
