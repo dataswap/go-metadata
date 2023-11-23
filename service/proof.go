@@ -342,6 +342,17 @@ func sortCommPSlices(c map[string]uint64) ([][]byte, []uint64) {
 
 //### public functions
 
+func LoadChallengesProofs(cachePath string) map[string]mt.Proof {
+	var proofs map[string]mt.Proof
+	cPath := path.Join(cachePath, CACHE_PROOFS_PATH)
+	err := loadFromFile(cPath, &proofs)
+	if err != nil {
+		fmt.Println("LoadChallengesProofs err: ", err)
+		return nil
+	}
+	return proofs
+}
+
 func LoadSortCommp(cachePath string) ([][]byte, []uint64) {
 	cPath := createPath(cachePath, "rawCommP"+CACHE_SUFFIX)
 	c, err := loadCommP(cPath)
