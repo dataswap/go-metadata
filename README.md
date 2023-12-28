@@ -1,3 +1,15 @@
+<h1 align="center">Welcome to @dataswap/go-metadata 👋</h1>
+<p>
+  <img alt="Version" src="https://img.shields.io/badge/version-0.0.0-blue.svg?cacheSeconds=2592000" />
+  <a href="https://github.com/dataswap/go-metadata#readme" target="_blank">
+    <img alt="Documentation" src="https://img.shields.io/badge/documentation-yes-brightgreen.svg" />
+  </a>
+  <a href="https://github.com/dataswap/go-metadata/blob/main/LICENSE" target="_blank">
+    <img alt="License: MIT and APACHE" src="https://img.shields.io/badge/License-MIT and APACHE-yellow.svg" />
+  </a>
+</p>
+
+### 🏠 [Homepage](https://github.com/dataswap/go-metadata)
 # go-metadata
 
 Implement mapping information collection between source data and target car files during the Dag construction process
@@ -5,12 +17,6 @@ Implement mapping information collection between source data and target car file
 ## Features
 
 go-metadata is a publicly available library that includes functions for source data sampling, CAR generation, dataset proofs, dataset proof challenges, and validation tools.
-
-## Documentation
-
-```shell
-To be added
-```
 
 ## Development
 
@@ -147,24 +153,21 @@ OPTIONS:
    --help, -h  show help
 ```
 
-## Contribute
+## Author
 
-go-metadata is a universally open project and welcomes contributions of all kinds: code, docs, and more. However, before making a contribution, we ask you to heed these recommendations:
+👤 **dataswap**
 
-* If the change is complex and requires prior discussion, [open an issue](https://github.com/dataswap/go-metadata/issues) or a [discussion](https://github.com/dataswap/specs) to request feedback before you start working on a pull request. This is to avoid disappointment and sunk costs, in case the change is not actually needed or accepted.
-* Please refrain from submitting [PRs](https://github.com/dataswap/go-metadata/pulls) to adapt existing code to subjective preferences. The changeset should contain functional or technical improvements/enhancements, bug fixes, new features, or some other clear material contribution. Simple stylistic changes are likely to be rejected in order to reduce code churn.
+* GitHub: [@dataswap](https://github.com/dataswap)
 
-When implementing a change:
+## 🤝 Contributing
 
-* Adhere to the standard Go formatting guidelines, e.g. [Effective Go](https://golang.org/doc/effective_go.html). Run `go fmt`.
-* Stick to the idioms and patterns used in the codebase. Familiar-looking code has a higher chance of being accepted than eerie code. Pay attention to commonly used variable and parameter names, avoidance of naked returns, error handling patterns, etc.
-* Comments: follow the advice on the [Commentary](https://golang.org/doc/effective_go.html#commentary) section of Effective Go.
-* Minimize code churn. Modify only what is strictly necessary. Well-encapsulated changesets will get a quicker response from maintainers.
-* Lint your code with [`golangci-lint`](https://golangci-lint.run) (CI will reject your PR if unlinted).
-* Add tests.
-* Title the PR in a meaningful way and describe the rationale and the thought process in the PR description.
-* Write clean, thoughtful, and detailed [commit messages](https://chris.beams.io/posts/git-commit/). This is even more important than the PR description, because commit messages are stored _inside_ the Git history. One good rule is: if you are happy posting the commit message as the PR description, then it's a good commit message.
+Contributions, issues and feature requests are welcome!<br />Feel free to check [issues page](https://github.com/dataswap/go-metadata/issues). You can also take a look at the [contributing guide](https://github.com/dataswap/go-metadata/blob/main/CONTRIBUTING.md).
 
-## License
+## Show your support
 
-This project is licensed under [GPL-3.0-or-later](https://www.gnu.org/licenses/gpl-3.0.en.html).
+Give a ⭐️ if this project helped you!
+
+## 📝 License
+
+Copyright © 2023 [dataswap](https://github.com/dataswap).<br />
+This project is [MIT and APACHE](https://github.com/dataswap/go-metadata/blob/main/LICENSE) licensed.
