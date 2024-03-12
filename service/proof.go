@@ -16,6 +16,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/dataswap/go-metadata/utils"
 	commcid "github.com/filecoin-project/go-fil-commcid"
 	sha256simd "github.com/minio/sha256-simd"
 	"github.com/opentracing/opentracing-go/log"
@@ -342,17 +343,6 @@ func sortCommPSlices(c map[string]uint64) ([][]byte, []uint64) {
 
 //### public functions
 
-func LoadChallengesProofs(cachePath string) map[string]mt.Proof {
-	var proofs map[string]mt.Proof
-	cPath := path.Join(cachePath, CACHE_PROOFS_PATH)
-	err := loadFromFile(cPath, &proofs)
-	if err != nil {
-		fmt.Println("LoadChallengesProofs err: ", err)
-		return nil
-	}
-	return proofs
-}
-
 func LoadSortCommp(cachePath string) ([][]byte, []uint64) {
 	cPath := createPath(cachePath, "rawCommP"+CACHE_SUFFIX)
 	c, err := loadCommP(cPath)
@@ -644,7 +634,7 @@ func VerifyTopProof(cachePath string, randomness uint64) (bool, *mt.Proof, error
 }
 
 // Generate challenge nodes Proofs
-func Proof(randomness uint64, cachePath string) (map[string]mt.Proof, error) {
+func GenChallengeProof(randomness uint64, cachePath string) (map[string]mt.Proof, error) {
 
 	// 1. Generate challenge nodes
 	commPs, carSize := LoadSortCommp(cachePath)
@@ -699,34 +689,35 @@ func Proof(randomness uint64, cachePath string) (map[string]mt.Proof, error) {
 			if err != nil {
 				return nil, err
 			}
-			challengeProof[string(leaf)] = *proof
+			challengeProof[utils.ConvertToHexPrefix(leaf)] = *proof
 		}
 	}
 
 	// 6. Store to cache file
 	cPath := createPath(cachePath, CACHE_PROOFS_PATH)
-	storeToFile(challengeProof, cPath)
+	NewChallengeProofs(randomness, challengeProof).save(cPath)
 
 	return challengeProof, nil
 }
 
 // Verify challenge nodes Proof
-func Verify(randomness uint64, cachePath string) (bool, error) {
+func VerifyChallengeProof(cachePath string) (bool, error) {
 
-	// 1. Generate challenge nodes
-	commPs, carSize := LoadSortCommp(cachePath)
-	if commPs == nil {
-		return false, errors.New("commPs is nil")
-	}
-	carChallenges, err := GenChallenges(randomness, uint64(len(commPs)), carSize)
+	// 1. Load proofs
+	cPath := path.Join(cachePath, CACHE_PROOFS_PATH)
+	challengeProofs, err := NewChallengeProofsFromFile(cPath)
 	if err != nil {
 		return false, err
 	}
 
-	// 2. Load proofs
-	var proofs map[string]mt.Proof
-	cPath := path.Join(cachePath, CACHE_PROOFS_PATH)
-	err = loadFromFile(cPath, &proofs)
+	proofs := challengeProofs.proof()
+
+	// 2. Generate challenge nodes
+	commPs, carSize := LoadSortCommp(cachePath)
+	if commPs == nil {
+		return false, errors.New("commPs is nil")
+	}
+	carChallenges, err := GenChallenges(challengeProofs.RandomSeed, uint64(len(commPs)), carSize)
 	if err != nil {
 		return false, err
 	}
@@ -740,8 +731,9 @@ func Verify(randomness uint64, cachePath string) (bool, error) {
 		}
 	}
 
-	for leaf, proof := range proofs {
-		rst, err := mt.Verify(&DataBlock{Data: []byte(leaf)}, &proof, commPs[idx[i]], CommpHashConfig)
+	for _leaf, proof := range proofs {
+		leaf, _ := utils.ParseHexWithPrefix(_leaf)
+		rst, err := mt.Verify(&DataBlock{Data: leaf}, &proof, commPs[idx[i]], CommpHashConfig)
 		if err != nil || !rst {
 			return false, err
 		}

@@ -125,13 +125,12 @@ func dumpChallengesProof(c *cli.Context) error {
 		return xerrors.Errorf("Args must be specified 1 num!")
 	}
 
-	proofs := metaservice.LoadChallengesProofs(c.Args().First())
+	proofs, err := metaservice.NewChallengeProofsFromFile(c.Args().First())
 
-	if proofs == nil {
-		log.Info("\nError: proofs is nil")
+	if err != nil {
+		log.Info("\nError:", err)
 		return nil
 	}
 	log.Info("\nproofs: ", proofs)
-	log.Infof("\nproofs: %x", proofs)
 	return nil
 }

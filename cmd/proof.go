@@ -20,7 +20,7 @@ var proofCmd = &cli.Command{
 
 var challengeProofCmd = &cli.Command{
 	Name:      "chanllenge-proof",
-	Usage:     "compute proof of merkle-tree",
+	Usage:     "compute chanllenge-proof of merkle-tree",
 	ArgsUsage: "<randomness> <cachePath>",
 	Action:    challengeProof,
 	Flags: []cli.Flag{
@@ -59,7 +59,7 @@ func challengeProof(c *cli.Context) error {
 
 	log.Info("\r\nrandomness: ", randomness)
 
-	_, err := metaservice.Proof(randomness, cachePath)
+	_, err := metaservice.GenChallengeProof(randomness, cachePath)
 	if err != nil {
 		return err
 	}

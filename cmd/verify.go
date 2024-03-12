@@ -1,8 +1,6 @@
 package main
 
 import (
-	"strconv"
-
 	metaservice "github.com/dataswap/go-metadata/service"
 	"github.com/urfave/cli/v2"
 
@@ -12,20 +10,19 @@ import (
 var verifyCmd = &cli.Command{
 	Name:      "verify",
 	Usage:     "verify challenge proofs of merkle-tree",
-	ArgsUsage: "<randomness> <cachePath>",
+	ArgsUsage: "<cachePath>",
 	Action:    verify,
 }
 
 // verify is a command to verify challenge proofs of merkle-tree.
 func verify(c *cli.Context) error {
-	if c.Args().Len() != 2 {
-		return xerrors.Errorf("Args must be specified 2 nums!")
+	if c.Args().Len() != 1 {
+		return xerrors.Errorf("Args must be specified 1 nums!")
 	}
 
-	randomness, _ := strconv.ParseUint(c.Args().First(), 10, 64)
-	cachePath := c.Args().Get(1)
+	cachePath := c.Args().First()
 
-	bl, err := metaservice.Verify(randomness, cachePath)
+	bl, err := metaservice.VerifyChallengeProof(cachePath)
 	if err != nil {
 		return err
 	}
