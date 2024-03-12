@@ -82,12 +82,12 @@ func datasetProof(c *cli.Context) error {
 
 	cachePath := c.Args().First()
 
-	_, err := metaservice.GenTopProof(cachePath)
+	_, err := metaservice.GenDatasetProof(cachePath)
 	if err != nil {
 		return err
 	}
 
-	bl, _, err := metaservice.VerifyTopProof(cachePath, 1)
+	bl, _, err := metaservice.VerifyDatasetProof(cachePath, 1)
 	if !bl || err != nil {
 		return err
 	}

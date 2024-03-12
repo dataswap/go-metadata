@@ -61,16 +61,16 @@ func TestGenCommP(t *testing.T) {
 	}
 }
 
-func TestGenTopProof(t *testing.T) {
+func TestGenDatasetProof(t *testing.T) {
 
 	saveCommpCache()
 	cachePath := "../testdata/output"
-	_, err := GenTopProof(cachePath)
+	_, err := GenDatasetProof(cachePath)
 	if err != nil {
 		t.Errorf("Proof fail")
 	}
 
-	bl, _, err := VerifyTopProof(cachePath, 1)
+	bl, _, err := VerifyDatasetProof(cachePath, 1)
 	if !bl || err != nil {
 		t.Errorf("Verify fail")
 	}
