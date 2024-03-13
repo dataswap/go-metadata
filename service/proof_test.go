@@ -61,22 +61,22 @@ func TestGenCommP(t *testing.T) {
 	}
 }
 
-func TestGenTopProof(t *testing.T) {
+func TestGenDatasetProof(t *testing.T) {
 
 	saveCommpCache()
 	cachePath := "../testdata/output"
-	_, err := GenTopProof(cachePath)
+	_, err := GenDatasetProof(cachePath)
 	if err != nil {
 		t.Errorf("Proof fail")
 	}
 
-	bl, _, err := VerifyTopProof(cachePath, 1)
+	bl, _, err := VerifyDatasetProof(cachePath, 1)
 	if !bl || err != nil {
 		t.Errorf("Verify fail")
 	}
 }
 
-func TestProof(t *testing.T) {
+func TestChallengeProof(t *testing.T) {
 
 	saveCommpCache()
 	randomness, _ := rand.Int(rand.Reader, big.NewInt(100))
@@ -87,14 +87,14 @@ func TestProof(t *testing.T) {
 		SourceParentPath("../testdata"),
 	)
 
-	_, err := Proof(randomness.Uint64(), cachePath)
+	_, err := GenChallengeProof(randomness.Uint64(), cachePath)
 	if err != nil {
 		t.Errorf("Proof fail")
 	}
 
-	bl, err := Verify(randomness.Uint64(), cachePath)
+	bl, err := VerifyChallengeProof(cachePath)
 	if err != nil || !bl {
-		t.Errorf("Verify fail")
+		t.Errorf("VerifyChallengeProof fail")
 	}
 }
 

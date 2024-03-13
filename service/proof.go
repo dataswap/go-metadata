@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
-	"encoding/gob"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -14,8 +13,8 @@ import (
 	"reflect"
 	"sort"
 	"sync"
-	"syscall"
 
+	"github.com/dataswap/go-metadata/utils"
 	commcid "github.com/filecoin-project/go-fil-commcid"
 	sha256simd "github.com/minio/sha256-simd"
 	"github.com/opentracing/opentracing-go/log"
@@ -40,12 +39,12 @@ const (
 	LEAF_CHALLENGE_MAX_COUNT = 172
 	LEAF_CHALLENGE_MIN_COUNT = 2
 
-	CAR_2MIB_CACHE_LAYER_START = 16
-	CAR_512B_CACHE_LAYER_START = 4
-	CACHE_SUFFIX               = ".cache"
-	CACHE_TPROOF_PATH          = "topMerkletree.tcache"
-	CACHE_PROOFS_PATH          = "challenges.proofs"
-	PROOFS_PATH                = "proofs"
+	CAR_2MIB_CACHE_LAYER_START  = 16
+	CAR_512B_CACHE_LAYER_START  = 4
+	CACHE_SUFFIX                = ".cache"
+	CACHE_DATASET_PROOF_PATH    = "dataset.proof"
+	CACHE_CHALLENGE_PROOFS_PATH = "challenges.proofs"
+	PROOFS_PATH                 = "proofs"
 
 	// MaxLayers is the current maximum height of the rust-fil-proofs proving tree.
 	MaxLayers = uint(31) // result of log2( 64 GiB / 32 )
@@ -66,22 +65,278 @@ var (
 	Once sync.Once
 )
 
-type DatasetMerkletree struct {
-	Root   []byte
-	Leaves [][]byte
+// ### export functions
+
+// PadCommP is experimental, do not use it.
+func PadCommP(sourceCommP []byte, sourcePaddedSize, targetPaddedSize uint64) ([]byte, error) {
+
+	if len(sourceCommP) != 32 {
+		return nil, xerrors.Errorf("provided commP must be exactly 32 bytes long, got %d bytes instead", len(sourceCommP))
+	}
+	if bits.OnesCount64(sourcePaddedSize) != 1 {
+		return nil, xerrors.Errorf("source padded size %d is not a power of 2", sourcePaddedSize)
+	}
+	if bits.OnesCount64(targetPaddedSize) != 1 {
+		return nil, xerrors.Errorf("target padded size %d is not a power of 2", targetPaddedSize)
+	}
+	if sourcePaddedSize > targetPaddedSize {
+		return nil, xerrors.Errorf("source padded size %d larger than target padded size %d", sourcePaddedSize, targetPaddedSize)
+	}
+	if sourcePaddedSize < 128 {
+		return nil, xerrors.Errorf("source padded size %d smaller than the minimum of 128 bytes", sourcePaddedSize)
+	}
+	if targetPaddedSize > MaxPieceSize {
+		return nil, xerrors.Errorf("target padded size %d larger than Filecoin maximum of %d bytes", targetPaddedSize, MaxPieceSize)
+	}
+
+	// noop
+	if sourcePaddedSize == targetPaddedSize {
+		return sourceCommP, nil
+	}
+
+	out := make([]byte, 32)
+	copy(out, sourceCommP)
+
+	s := bits.TrailingZeros64(sourcePaddedSize)
+	t := bits.TrailingZeros64(targetPaddedSize)
+
+	sha256Func := sha256simd.New()
+	for ; s < t; s++ {
+		sha256Func.Reset()
+		sha256Func.Write(out)
+		sha256Func.Write(StackedNulPadding[s-5]) // account for 32byte chunks + off-by-one padding tower offset
+		out = sha256Func.Sum(out[:0])
+		out[31] &= 0x3F
+	}
+
+	return out, nil
 }
 
-// DataBlock is a implementation of the DataBlock interface.
-type DataBlock struct { // mt
-	Data []byte
+// SaveCommP append. struct format: map{commmp:carSize}
+func SaveCommP(rawCommP []byte, carSize uint64, cachePath string) error {
+
+	cPath := createPath(cachePath, "rawCommP"+CACHE_SUFFIX)
+
+	lock, err := utils.NewFileLock(cachePath)
+	if err != nil {
+		fmt.Println("Lock File Error:", err)
+		return err
+	}
+	defer lock.Close()
+
+	if err := lock.Lock(); err != nil {
+		fmt.Println("Lock Error:", err)
+		return err
+	}
+	defer lock.Unlock()
+	commp, _ := loadCommP(cPath)
+	if commp == nil { // first is nil
+		commp = &map[string]uint64{}
+	}
+
+	(*commp)[string(rawCommP)] = carSize
+
+	utils.WriteGob(commp, cPath)
+
+	return nil
 }
 
-//### Merkle-tree hash functions
+// GenCommP is the commP generate. targetPaddedSize = 0 is use default padded size
+func GenCommP(buf bytes.Buffer, cachePath string, targetPaddedSize uint64) ([]byte, uint64, error) {
 
-// Serialize returns the serialized form of the DataBlock.
-func (t *DataBlock) Serialize() ([]byte, error) {
-	return t.Data, nil
+	blocks, paddedPieceSize, err := NewPaddedDataBlocksFromBuffer(buf, targetPaddedSize)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	tree, _ := mt.NewWithPadding(CommpHashConfig, blocks, StackedNulPadding)
+
+	// paddedPieceSize := SumChunkCount * SLAB_CHUNK_SIZE
+	// hacky round-up-to-next-pow2
+	if bits.OnesCount64(paddedPieceSize) != 1 {
+		paddedPieceSize = 1 << uint(64-bits.LeadingZeros64(paddedPieceSize))
+	}
+
+	cacheStart := CarCacheLayerStart(uint64(buf.Len()))
+
+	lc, err := mt.NewLevelCache(tree, cacheStart, tree.Depth-cacheStart)
+
+	if err != nil {
+		log.Error(err)
+		return nil, 0, err
+	}
+	cPath := createPath(cachePath, hex.EncodeToString(tree.Root)+CACHE_SUFFIX)
+	if err = lc.StoreToFile(cPath); err != nil {
+		log.Error(err)
+		return nil, 0, err
+	}
+
+	return tree.Root, paddedPieceSize, nil
 }
+
+// Generate commPs Merkle-Tree root to .tcache, proofs{rootHash, leafHashes[]}
+// cachePath: store to file path
+func GenDatasetProof(cachePath string) ([]byte, error) {
+
+	commPs, sizes := LoadSortCommp(cachePath)
+	Leaves := NewDataBlocksFromBytes(commPs)
+	tree, err := mt.New(CommpHashConfig, Leaves)
+	if err != nil {
+		log.Error(err)
+		return nil, err
+	}
+
+	cache := DatasetMerkletree{Root: tree.Root, Leaves: tree.Leaves}
+	cPath := createPath(cachePath, CACHE_DATASET_PROOF_PATH)
+	err = NewDatasetProof(cache, sizes).save(cPath)
+	if err != nil {
+		log.Error(err)
+		return nil, err
+	}
+
+	return tree.Root, nil
+}
+
+// Verify commPs Merkle-Tree proof
+func VerifyDatasetProof(cachePath string, randomness uint64) (bool, *mt.Proof, error) {
+
+	cPath := createPath(cachePath, CACHE_DATASET_PROOF_PATH)
+	datasetProof, err := NewDatasetProofFromFile(cPath)
+	if err != nil {
+		return false, nil, err
+	}
+	cache := datasetProof.proof()
+
+	Leaves := NewDataBlocksFromBytes(cache.Leaves)
+	tree, err := mt.New(CommpHashConfig, Leaves)
+	if err != nil {
+		log.Error(err)
+		return false, nil, err
+	}
+
+	if !reflect.DeepEqual(tree.Root, cache.Root) {
+		proof, err := tree.Proof(Leaves[randomness%uint64(len(Leaves))])
+		if err != nil {
+			return false, nil, err
+		}
+
+		return false, proof, nil
+	}
+
+	return true, nil, nil
+}
+
+// Generate challenge nodes Proofs
+func GenChallengeProof(randomness uint64, cachePath string) (map[string]mt.Proof, error) {
+
+	// 1. Generate challenge nodes
+	commPs, carSize := LoadSortCommp(cachePath)
+	carChallenges, err := GenChallenges(randomness, uint64(len(commPs)), carSize)
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. Get challenge chunk data
+	challengeProof := make(map[string]mt.Proof)
+	for carIndex, LeavesIndex := range carChallenges {
+
+		carChunkSize, carChunkNum := CarChunkParams(carSize[carIndex])
+		for _, leafIndex := range LeavesIndex {
+
+			commCid, err := commcid.DataCommitmentV1ToCID(commPs[carIndex])
+			if err != nil {
+				return nil, err
+			}
+			buf, err := GetChallengeChunk(commCid, uint64((leafIndex/carChunkSize)*carChunkSize), carChunkSize)
+			if err != nil {
+				return nil, err
+			}
+
+			// 3. Generate a car chunk proof
+			blocks, _, err := NewPaddedDataBlocksFromBuffer(*bytes.NewBuffer(buf), 0)
+			if err != nil {
+				return nil, err
+			}
+			proof, root, err := GenProof(blocks, blocks[leafIndex%carChunkNum])
+			if err != nil {
+				return nil, err
+			}
+
+			// 4. Generate a car cache proof
+			cPath := createPath(cachePath, commCid.String()+CACHE_SUFFIX)
+			cacheProof, _, err := GenProofFromCache(NewDataBlockFromBytes(root), cPath)
+			if err != nil {
+				return nil, err
+			}
+
+			// 5. Concat proofs
+			proof, err = AppendProof(proof, *cacheProof)
+			if err != nil {
+				return nil, err
+			}
+
+			if proof == nil {
+				return nil, errors.New("proof is nil")
+			}
+			leaf, err := blocks[leafIndex%carChunkNum].Serialize()
+			if err != nil {
+				return nil, err
+			}
+			challengeProof[utils.ConvertToHexPrefix(leaf)] = *proof
+		}
+	}
+
+	// 6. Store to cache file
+	cPath := createPath(cachePath, CACHE_CHALLENGE_PROOFS_PATH)
+	NewChallengeProofs(randomness, challengeProof).save(cPath)
+
+	return challengeProof, nil
+}
+
+// Verify challenge nodes Proof
+func VerifyChallengeProof(cachePath string) (bool, error) {
+
+	// 1. Load proofs
+	cPath := path.Join(cachePath, CACHE_CHALLENGE_PROOFS_PATH)
+	challengeProofs, err := NewChallengeProofsFromFile(cPath)
+	if err != nil {
+		return false, err
+	}
+
+	proofs := challengeProofs.proof()
+
+	// 2. Generate challenge nodes
+	commPs, carSize := LoadSortCommp(cachePath)
+	if commPs == nil {
+		return false, errors.New("commPs is nil")
+	}
+	carChallenges, err := GenChallenges(challengeProofs.RandomSeed, uint64(len(commPs)), carSize)
+	if err != nil {
+		return false, err
+	}
+
+	// 3. Verify proofs
+	var idx []uint64
+	i := 0
+	for carIndex, LeavesIndex := range carChallenges {
+		for range LeavesIndex {
+			idx = append(idx, carIndex)
+		}
+	}
+
+	for _leaf, proof := range proofs {
+		leaf, _ := utils.ParseHexWithPrefix(_leaf)
+		rst, err := mt.Verify(&DataBlock{Data: leaf}, &proof, commPs[idx[i]], CommpHashConfig)
+		if err != nil || !rst {
+			return false, err
+		}
+		i++
+	}
+
+	return true, nil
+}
+
+//### public functions
 
 // SHA256 hash generate function for commp
 func NewHashFunc(data []byte) ([]byte, error) {
@@ -146,213 +401,9 @@ func DataPadding(inSlab []byte) []byte {
 	return outSlab
 }
 
-// initialize the nul padding stack
-func initStackedNulPadding() {
-	digest := sha256.New()
-	StackedNulPadding[0] = make([]byte, sha256.Size)
-	for i := uint(1); i < MaxLayers; i++ {
-		digest.Reset()
-		digest.Write(StackedNulPadding[i-1]) // yes, got to...
-		digest.Write(StackedNulPadding[i-1]) // ...do it twice
-		StackedNulPadding[i] = digest.Sum(make([]byte, 0, sha256.Size))
-		StackedNulPadding[i][31] &= 0x3F
-	}
-}
-
-//### internal functions
-
-type FileLock struct {
-	lockFile *os.File
-}
-
-func NewFileLock(filePath string) (*FileLock, error) {
-	lockFilePath := filePath + ".lock"
-	lockFile, err := os.OpenFile(lockFilePath, os.O_CREATE|os.O_RDWR, 0644)
-	if err != nil {
-		return nil, err
-	}
-	return &FileLock{lockFile: lockFile}, nil
-}
-
-func (f *FileLock) Lock() error {
-	return syscall.Flock(int(f.lockFile.Fd()), syscall.LOCK_EX)
-}
-
-func (f *FileLock) Unlock() error {
-	return syscall.Flock(int(f.lockFile.Fd()), syscall.LOCK_UN)
-}
-
-func (f *FileLock) Close() {
-	f.lockFile.Close()
-}
-
-// Padding DataBlock, commp leaf node use
-// targetPaddedSize = 0 use default paddedSize
-func bufferToDataBlocks(buf bytes.Buffer, targetPaddedSize uint64) ([]mt.DataBlock, uint64, error) {
-	// padding stack
-	Once.Do(initStackedNulPadding)
-
-	srcLen := buf.Len()
-
-	// Padding source data
-	if mod := srcLen % SOURCE_CHUNK_SIZE; mod != 0 {
-		// fmt.Println("total padlen: ", SOURCE_CHUNK_SIZE-mod, ", srcLen: ", srcLen)
-		buf.Write(make([]byte, SOURCE_CHUNK_SIZE-mod))
-		srcLen = buf.Len()
-	}
-
-	// Struce blocks from source data
-	idx := 0
-	blocks := make([]mt.DataBlock, srcLen*CHUNK_NODES_NUM/SOURCE_CHUNK_SIZE)
-	for j := 0; j < srcLen/SOURCE_CHUNK_SIZE; j++ {
-		nodes := DataPadding(buf.Bytes()[j*SOURCE_CHUNK_SIZE : (j+1)*SOURCE_CHUNK_SIZE])
-		for b := 0; b < CHUNK_NODES_NUM; b++ {
-			block := &DataBlock{
-				Data: nodes[b*NODE_SIZE : (b+1)*NODE_SIZE],
-			}
-			blocks[idx] = block
-			idx++
-		}
-	}
-
-	sourcePaddedSize := uint64((srcLen / SOURCE_CHUNK_SIZE) * SLAB_CHUNK_SIZE)
-	if targetPaddedSize != 0 {
-		blocks, err := paddingToDataBlocks(blocks, sourcePaddedSize, targetPaddedSize)
-		if err != nil {
-			return nil, 0, err
-		}
-		return blocks, targetPaddedSize, nil
-	}
-
-	return blocks, sourcePaddedSize, nil
-}
-
-func paddingToDataBlocks(dataBlocks []mt.DataBlock, sourcePaddedSize, targetPaddedSize uint64) ([]mt.DataBlock, error) {
-	if bits.OnesCount64(sourcePaddedSize) != 1 {
-		return nil, xerrors.Errorf("source padded size %d is not a power of 2", sourcePaddedSize)
-	}
-	if bits.OnesCount64(targetPaddedSize) != 1 {
-		return nil, xerrors.Errorf("target padded size %d is not a power of 2", targetPaddedSize)
-	}
-	if sourcePaddedSize > targetPaddedSize {
-		return nil, xerrors.Errorf("source padded size %d larger than target padded size %d", sourcePaddedSize, targetPaddedSize)
-	}
-	if sourcePaddedSize < 128 {
-		return nil, xerrors.Errorf("source padded size %d smaller than the minimum of 128 bytes", sourcePaddedSize)
-	}
-	if targetPaddedSize > MaxPieceSize {
-		return nil, xerrors.Errorf("target padded size %d larger than Filecoin maximum of %d bytes", targetPaddedSize, MaxPieceSize)
-	}
-
-	// noop
-	if sourcePaddedSize == targetPaddedSize {
-		return dataBlocks, nil
-	}
-
-	s := bits.TrailingZeros64(sourcePaddedSize)
-	t := bits.TrailingZeros64(targetPaddedSize)
-
-	for ; s < t; s++ {
-		dataBlocks = append(dataBlocks, &DataBlock{Data: StackedNulPadding[s-5]})
-	}
-
-	return dataBlocks, nil
-}
-
-// No padding DataBlock
-func bytesToDataBlock(data []byte) mt.DataBlock {
-	return &DataBlock{
-		Data: data[0:NODE_SIZE],
-	}
-}
-
-func bytesToDataBlocks(bt [][]byte) []mt.DataBlock {
-	blocks := make([]mt.DataBlock, len(bt))
-	for i, data := range bt {
-		blocks[i] = &DataBlock{
-			Data: data[0:NODE_SIZE],
-		}
-	}
-
-	return blocks
-}
-
-func createPath(filePath string, fileName string) string {
-	os.MkdirAll(filePath, 0o775)
-	return path.Join(filePath, fileName)
-}
-
-func storeToFile(data interface{}, filePath string) error {
-
-	file, err := os.Create(filePath)
-
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	encoder := gob.NewEncoder(file)
-	if err = encoder.Encode(data); err != nil {
-		return err
-	}
-	return nil
-}
-
-func loadFromFile(filePath string, target interface{}) error {
-	readFile, err := os.Open(filePath)
-	if err != nil {
-		return err
-	}
-	defer readFile.Close()
-
-	decoder := gob.NewDecoder(readFile)
-	if err = decoder.Decode(target); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func loadCommP(cachePath string) (*map[string]uint64, error) {
-	commp := map[string]uint64{}
-	if err := loadFromFile(cachePath, &commp); err != nil {
-		return nil, err
-	}
-	return &commp, nil
-}
-
-func sortCommPSlices(c map[string]uint64) ([][]byte, []uint64) {
-
-	commp := make([][]byte, 0, len(c))
-	for k := range c {
-		commp = append(commp, []byte(k))
-	}
-
-	sort.Slice(commp, func(i, j int) bool {
-		return bytes.Compare(commp[i], commp[j]) < 0
-	})
-
-	size := make([]uint64, 0, len(commp))
-	for _, v := range commp {
-		size = append(size, c[string(v)])
-	}
-
-	return commp, size
-}
-
-//### public functions
-
-func LoadChallengesProofs(cachePath string) map[string]mt.Proof {
-	var proofs map[string]mt.Proof
-	cPath := path.Join(cachePath, CACHE_PROOFS_PATH)
-	err := loadFromFile(cPath, &proofs)
-	if err != nil {
-		fmt.Println("LoadChallengesProofs err: ", err)
-		return nil
-	}
-	return proofs
-}
-
+// LoadSortCommp loads and sorts the CommP values from the cache file.
+// It takes the cache file path as input.
+// It returns a slice of CommP values and a slice of their corresponding indices.
 func LoadSortCommp(cachePath string) ([][]byte, []uint64) {
 	cPath := createPath(cachePath, "rawCommP"+CACHE_SUFFIX)
 	c, err := loadCommP(cPath)
@@ -381,6 +432,9 @@ func CarChallengeCount(carNum uint64) uint64 {
 	}
 }
 
+// CarChunkParams returns the chunk size and node number for a given CAR size.
+// It takes the size of the CAR as input.
+// It returns the chunk size and the number of nodes.
 func CarChunkParams(carSize uint64) (uint64, uint64) {
 	if carSize < CAR_2MIB_CHUNK_SIZE {
 		return CAR_512B_CHUNK_SIZE, CAR_512B_NODE_NUM
@@ -389,6 +443,9 @@ func CarChunkParams(carSize uint64) (uint64, uint64) {
 	}
 }
 
+// CarCacheLayerStart returns the start index of the cache layer for a given CAR size.
+// It takes the size of the CAR as input.
+// It returns the start index of the cache layer.
 func CarCacheLayerStart(carSize uint64) int {
 	if carSize < CAR_2MIB_CHUNK_SIZE {
 		return CAR_512B_CACHE_LAYER_START
@@ -414,6 +471,8 @@ func GenChallenges(randomness uint64, carNum uint64, carSize []uint64) (map[uint
 	return carChallenges, nil
 }
 
+// GenCarChallenge generates a car challenge index using randomness, the car challenge index, and the total number of car challenges.
+// It returns the generated car challenge index.
 func GenCarChallenge(randomness uint64, carChallengeIndex uint64, carChallengesCount uint64) uint64 {
 	sha256Func := sha256simd.New()
 
@@ -430,6 +489,8 @@ func GenCarChallenge(randomness uint64, carChallengeIndex uint64, carChallengesC
 	return carChallenge % carChallengesCount
 }
 
+// GenLeafChallenge generates a leaf challenge index using randomness, the car index, the leaf challenge index, and the size of the car.
+// It returns the generated leaf challenge index.
 func GenLeafChallenge(randomness uint64, carIndex uint64, leafChallengeIndex uint32, carSize uint64) uint64 {
 	sha256Func := sha256simd.New()
 
@@ -450,6 +511,9 @@ func GenLeafChallenge(randomness uint64, carIndex uint64, leafChallengeIndex uin
 	return leaf_challenge % carSize
 }
 
+// GenProof generates a Merkle tree proof for the specified leaf block.
+// It takes a slice of data blocks and the leaf block as input.
+// It returns the proof, the root hash of the Merkle tree, and any error encountered.
 func GenProof(blocks []mt.DataBlock, leaf mt.DataBlock) (*mt.Proof, []byte, error) {
 
 	tree, err := mt.NewWithPadding(CommpHashConfig, blocks, StackedNulPadding)
@@ -466,6 +530,9 @@ func GenProof(blocks []mt.DataBlock, leaf mt.DataBlock) (*mt.Proof, []byte, erro
 	return proof, tree.Root, nil
 }
 
+// GenProofFromCache generates a Merkle tree proof for the specified leaf block using a level cache.
+// It takes the leaf block and the cache file path as input.
+// It returns the proof, the root hash of the Merkle tree, and any error encountered.
 func GenProofFromCache(leaf mt.DataBlock, file string) (*mt.Proof, []byte, error) {
 	lc, err := mt.NewLevelCacheFromFile(file)
 	if err != nil {
@@ -484,269 +551,58 @@ func AppendProof(base *mt.Proof, sub mt.Proof) (*mt.Proof, error) {
 	return mt.AppendProof(base, sub)
 }
 
-// ### export functions
+//### internal functions
 
-// PadCommP is experimental, do not use it.
-func PadCommP(sourceCommP []byte, sourcePaddedSize, targetPaddedSize uint64) ([]byte, error) {
-
-	if len(sourceCommP) != 32 {
-		return nil, xerrors.Errorf("provided commP must be exactly 32 bytes long, got %d bytes instead", len(sourceCommP))
+// initialize the nul padding stack
+func initStackedNulPadding() {
+	digest := sha256.New()
+	StackedNulPadding[0] = make([]byte, sha256.Size)
+	for i := uint(1); i < MaxLayers; i++ {
+		digest.Reset()
+		digest.Write(StackedNulPadding[i-1]) // yes, got to...
+		digest.Write(StackedNulPadding[i-1]) // ...do it twice
+		StackedNulPadding[i] = digest.Sum(make([]byte, 0, sha256.Size))
+		StackedNulPadding[i][31] &= 0x3F
 	}
-	if bits.OnesCount64(sourcePaddedSize) != 1 {
-		return nil, xerrors.Errorf("source padded size %d is not a power of 2", sourcePaddedSize)
-	}
-	if bits.OnesCount64(targetPaddedSize) != 1 {
-		return nil, xerrors.Errorf("target padded size %d is not a power of 2", targetPaddedSize)
-	}
-	if sourcePaddedSize > targetPaddedSize {
-		return nil, xerrors.Errorf("source padded size %d larger than target padded size %d", sourcePaddedSize, targetPaddedSize)
-	}
-	if sourcePaddedSize < 128 {
-		return nil, xerrors.Errorf("source padded size %d smaller than the minimum of 128 bytes", sourcePaddedSize)
-	}
-	if targetPaddedSize > MaxPieceSize {
-		return nil, xerrors.Errorf("target padded size %d larger than Filecoin maximum of %d bytes", targetPaddedSize, MaxPieceSize)
-	}
-
-	// noop
-	if sourcePaddedSize == targetPaddedSize {
-		return sourceCommP, nil
-	}
-
-	out := make([]byte, 32)
-	copy(out, sourceCommP)
-
-	s := bits.TrailingZeros64(sourcePaddedSize)
-	t := bits.TrailingZeros64(targetPaddedSize)
-
-	sha256Func := sha256simd.New()
-	for ; s < t; s++ {
-		sha256Func.Reset()
-		sha256Func.Write(out)
-		sha256Func.Write(StackedNulPadding[s-5]) // account for 32byte chunks + off-by-one padding tower offset
-		out = sha256Func.Sum(out[:0])
-		out[31] &= 0x3F
-	}
-
-	return out, nil
 }
 
-// SaveCommP append. struct format: map{commmp:carSize}
-func SaveCommP(rawCommP []byte, carSize uint64, cachePath string) error {
-
-	cPath := createPath(cachePath, "rawCommP"+CACHE_SUFFIX)
-
-	lock, err := NewFileLock(cachePath)
-	if err != nil {
-		fmt.Println("Lock File Error:", err)
-		return err
-	}
-	defer lock.Close()
-
-	if err := lock.Lock(); err != nil {
-		fmt.Println("Lock Error:", err)
-		return err
-	}
-	defer lock.Unlock()
-	commp, _ := loadCommP(cPath)
-	if commp == nil { // first is nil
-		commp = &map[string]uint64{}
-	}
-
-	(*commp)[string(rawCommP)] = carSize
-
-	storeToFile(commp, cPath)
-
-	return nil
+// createPath creates a directory path and returns the full file path by joining the directory path with the file name.
+// It takes the directory path and the file name as input.
+// It returns the full file path.
+func createPath(filePath string, fileName string) string {
+	os.MkdirAll(filePath, 0o775)
+	return path.Join(filePath, fileName)
 }
 
-// GenCommP is the commP generate. targetPaddedSize = 0 is use default padded size
-func GenCommP(buf bytes.Buffer, cachePath string, targetPaddedSize uint64) ([]byte, uint64, error) {
-
-	blocks, paddedPieceSize, err := bufferToDataBlocks(buf, targetPaddedSize)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	tree, _ := mt.NewWithPadding(CommpHashConfig, blocks, StackedNulPadding)
-
-	// paddedPieceSize := SumChunkCount * SLAB_CHUNK_SIZE
-	// hacky round-up-to-next-pow2
-	if bits.OnesCount64(paddedPieceSize) != 1 {
-		paddedPieceSize = 1 << uint(64-bits.LeadingZeros64(paddedPieceSize))
-	}
-
-	cacheStart := CarCacheLayerStart(uint64(buf.Len()))
-
-	lc, err := mt.NewLevelCache(tree, cacheStart, tree.Depth-cacheStart)
-
-	if err != nil {
-		log.Error(err)
-		return nil, 0, err
-	}
-	cPath := createPath(cachePath, hex.EncodeToString(tree.Root)+CACHE_SUFFIX)
-	if err = lc.StoreToFile(cPath); err != nil {
-		log.Error(err)
-		return nil, 0, err
-	}
-
-	return tree.Root, paddedPieceSize, nil
-}
-
-// Generate commPs Merkle-Tree root to .tcache, proofs{rootHash, leafHashes[]}
-// cachePath: store to file path
-func GenTopProof(cachePath string) ([]byte, error) {
-
-	commPs, _ := LoadSortCommp(cachePath)
-	Leaves := bytesToDataBlocks(commPs)
-	tree, err := mt.New(CommpHashConfig, Leaves)
-	if err != nil {
-		log.Error(err)
+// loadCommP loads CommP values from a cache file.
+// It takes the cache file path as input.
+// It returns a map containing CommP values and an error if any.
+func loadCommP(cachePath string) (*map[string]uint64, error) {
+	commp := map[string]uint64{}
+	if err := utils.ReadGob(cachePath, &commp); err != nil {
 		return nil, err
 	}
-
-	cache := DatasetMerkletree{Root: tree.Root, Leaves: tree.Leaves}
-	cPath := createPath(cachePath, CACHE_TPROOF_PATH)
-	err = storeToFile(&cache, cPath)
-	if err != nil {
-		log.Error(err)
-		return nil, err
-	}
-
-	return tree.Root, nil
+	return &commp, nil
 }
 
-// Verify commPs Merkle-Tree proof
-func VerifyTopProof(cachePath string, randomness uint64) (bool, *mt.Proof, error) {
-	cache := DatasetMerkletree{}
-	cPath := createPath(cachePath, CACHE_TPROOF_PATH)
-	if err := loadFromFile(cPath, &cache); err != nil {
-		return false, nil, err
+// sortCommPSlices sorts CommP slices and returns them along with their corresponding sizes.
+// It takes a map containing CommP values as input.
+// It returns slices of CommP values and their corresponding sizes.
+func sortCommPSlices(c map[string]uint64) ([][]byte, []uint64) {
+
+	commp := make([][]byte, 0, len(c))
+	for k := range c {
+		commp = append(commp, []byte(k))
 	}
 
-	Leaves := bytesToDataBlocks(cache.Leaves)
-	tree, err := mt.New(CommpHashConfig, Leaves)
-	if err != nil {
-		log.Error(err)
-		return false, nil, err
+	sort.Slice(commp, func(i, j int) bool {
+		return bytes.Compare(commp[i], commp[j]) < 0
+	})
+
+	size := make([]uint64, 0, len(commp))
+	for _, v := range commp {
+		size = append(size, c[string(v)])
 	}
 
-	if !reflect.DeepEqual(tree.Root, cache.Root) {
-		proof, err := tree.Proof(Leaves[randomness%uint64(len(Leaves))])
-		if err != nil {
-			return false, nil, err
-		}
-
-		return false, proof, nil
-	}
-
-	return true, nil, nil
-}
-
-// Generate challenge nodes Proofs
-func Proof(randomness uint64, cachePath string) (map[string]mt.Proof, error) {
-
-	// 1. Generate challenge nodes
-	commPs, carSize := LoadSortCommp(cachePath)
-	carChallenges, err := GenChallenges(randomness, uint64(len(commPs)), carSize)
-	if err != nil {
-		return nil, err
-	}
-
-	// 2. Get challenge chunk data
-	challengeProof := make(map[string]mt.Proof)
-	for carIndex, LeavesIndex := range carChallenges {
-
-		carChunkSize, carChunkNum := CarChunkParams(carSize[carIndex])
-		for _, leafIndex := range LeavesIndex {
-
-			commCid, err := commcid.DataCommitmentV1ToCID(commPs[carIndex])
-			if err != nil {
-				return nil, err
-			}
-			buf, err := GetChallengeChunk(commCid, uint64((leafIndex/carChunkSize)*carChunkSize), carChunkSize)
-			if err != nil {
-				return nil, err
-			}
-
-			// 3. Generate a car chunk proof
-			blocks, _, err := bufferToDataBlocks(*bytes.NewBuffer(buf), 0)
-			if err != nil {
-				return nil, err
-			}
-			proof, root, err := GenProof(blocks, blocks[leafIndex%carChunkNum])
-			if err != nil {
-				return nil, err
-			}
-
-			// 4. Generate a car cache proof
-			cPath := createPath(cachePath, commCid.String()+CACHE_SUFFIX)
-			cacheProof, _, err := GenProofFromCache(bytesToDataBlock(root), cPath)
-			if err != nil {
-				return nil, err
-			}
-
-			// 5. Concat proofs
-			proof, err = AppendProof(proof, *cacheProof)
-			if err != nil {
-				return nil, err
-			}
-
-			if proof == nil {
-				return nil, errors.New("proof is nil")
-			}
-			leaf, err := blocks[leafIndex%carChunkNum].Serialize()
-			if err != nil {
-				return nil, err
-			}
-			challengeProof[string(leaf)] = *proof
-		}
-	}
-
-	// 6. Store to cache file
-	cPath := createPath(cachePath, CACHE_PROOFS_PATH)
-	storeToFile(challengeProof, cPath)
-
-	return challengeProof, nil
-}
-
-// Verify challenge nodes Proof
-func Verify(randomness uint64, cachePath string) (bool, error) {
-
-	// 1. Generate challenge nodes
-	commPs, carSize := LoadSortCommp(cachePath)
-	if commPs == nil {
-		return false, errors.New("commPs is nil")
-	}
-	carChallenges, err := GenChallenges(randomness, uint64(len(commPs)), carSize)
-	if err != nil {
-		return false, err
-	}
-
-	// 2. Load proofs
-	var proofs map[string]mt.Proof
-	cPath := path.Join(cachePath, CACHE_PROOFS_PATH)
-	err = loadFromFile(cPath, &proofs)
-	if err != nil {
-		return false, err
-	}
-
-	// 3. Verify proofs
-	var idx []uint64
-	i := 0
-	for carIndex, LeavesIndex := range carChallenges {
-		for range LeavesIndex {
-			idx = append(idx, carIndex)
-		}
-	}
-
-	for leaf, proof := range proofs {
-		rst, err := mt.Verify(&DataBlock{Data: []byte(leaf)}, &proof, commPs[idx[i]], CommpHashConfig)
-		if err != nil || !rst {
-			return false, err
-		}
-		i++
-	}
-
-	return true, nil
+	return commp, size
 }
