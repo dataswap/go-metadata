@@ -2,7 +2,9 @@ package metaservice
 
 import (
 	"bytes"
+	"fmt"
 	"math/bits"
+	"strconv"
 
 	"github.com/dataswap/go-metadata/utils"
 	"golang.org/x/xerrors"
@@ -26,7 +28,7 @@ type ChallengeProofs struct {
 	RandomSeed uint64
 	Leaves     []string
 	Siblings   [][]string
-	Paths      []uint32
+	Paths      []string
 }
 
 // DatasetProof represents the data structure of dataset proofs.
@@ -196,7 +198,7 @@ func NewChallengeProofs(randomness uint64, proof map[string]mt.Proof) *Challenge
 		}
 		challengeProofs.Siblings = append(challengeProofs.Siblings, siblings)
 
-		challengeProofs.Paths = append(challengeProofs.Paths, value.Path)
+		challengeProofs.Paths = append(challengeProofs.Paths, fmt.Sprintf("0x%x", value.Path))
 	}
 	return &challengeProofs
 }
@@ -230,9 +232,10 @@ func (c *ChallengeProofs) proof() map[string]mt.Proof {
 			siblings[j], _ = utils.ParseHexWithPrefix(sibling)
 		}
 
+		path, _ := strconv.ParseUint(c.Paths[i], 0, 32)
 		proofMap[leaf] = mt.Proof{
 			Siblings: siblings,
-			Path:     c.Paths[i],
+			Path:     uint32(path),
 		}
 	}
 
