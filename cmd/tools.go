@@ -35,8 +35,8 @@ var commpCmd = &cli.Command{
 
 // commpCar is a command to output the commp cid in a car.
 func commpCar(c *cli.Context) error {
-	if c.Args().Len() != 2 && c.Args().Len() != 5 {
-		return xerrors.Errorf("Args must be specified 2 or 5 nums!")
+	if c.Args().Len() != 3 {
+		return xerrors.Errorf("Args must be specified 3 nums!")
 	}
 
 	bs, err := blockstore.OpenReadOnly(c.Args().First())

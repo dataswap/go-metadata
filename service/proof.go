@@ -39,6 +39,8 @@ const (
 	LEAF_CHALLENGE_MAX_COUNT = 172
 	LEAF_CHALLENGE_MIN_COUNT = 2
 
+	commPBufPad = PaddedPieceSize(8 << 20)
+
 	CAR_2MIB_CACHE_LAYER_START  = 16
 	CAR_512B_CACHE_LAYER_START  = 4
 	CACHE_SUFFIX                = ".cache"
@@ -144,21 +146,14 @@ func SaveCommP(rawCommP []byte, carSize uint64, cachePath string) error {
 // GenCommP is the commP generate. targetPaddedSize = 0 is use default padded size
 func GenCommP(buf bytes.Buffer, cachePath string, targetPaddedSize uint64) ([]byte, uint64, error) {
 
-	blocks, paddedPieceSize, err := NewPaddedDataBlocksFromBuffer(buf, targetPaddedSize)
+	blocks, _, err := NewPaddedDataBlocksFromBuffer(buf, targetPaddedSize)
 	if err != nil {
 		return nil, 0, err
 	}
 
 	tree, _ := mt.NewWithPadding(CommpHashConfig, blocks, StackedNulPadding)
 
-	// paddedPieceSize := SumChunkCount * SLAB_CHUNK_SIZE
-	// hacky round-up-to-next-pow2
-	if bits.OnesCount64(paddedPieceSize) != 1 {
-		paddedPieceSize = 1 << uint(64-bits.LeadingZeros64(paddedPieceSize))
-	}
-
 	cacheStart := CarCacheLayerStart(uint64(buf.Len()))
-
 	lc, err := mt.NewLevelCache(tree, cacheStart, tree.Depth-cacheStart)
 
 	if err != nil {
@@ -171,7 +166,12 @@ func GenCommP(buf bytes.Buffer, cachePath string, targetPaddedSize uint64) ([]by
 		return nil, 0, err
 	}
 
-	return tree.Root, paddedPieceSize, nil
+	totalLength := uint64(0)
+	for _, row := range tree.Leaves {
+		totalLength += uint64(len(row))
+	}
+
+	return tree.Root, uint64(PaddedPieceSize(totalLength) * commPBufPad), nil
 }
 
 // Generate commPs Merkle-Tree root to .tcache, proofs{rootHash, leafHashes[]}
