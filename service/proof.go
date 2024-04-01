@@ -180,21 +180,36 @@ func GenDatasetProof(cachePath string) ([]byte, error) {
 
 	commPs, sizes := LoadSortCommp(cachePath)
 	Leaves := NewDataBlocksFromBytes(commPs)
-	tree, err := mt.New(CommpHashConfig, Leaves)
-	if err != nil {
+	cache := DatasetMerkletree{}
+
+	if err := errors.New("the number of leaves must be greater than 0"); len(Leaves) < 1 {
 		log.Error(err)
 		return nil, err
-	}
+	} else if len(Leaves) == 1 {
+		if leave, err := Leaves[0].Serialize(); err != nil {
+			return nil, err
+		} else {
+			cache = DatasetMerkletree{Root: leave, Leaves: [][]byte{leave}}
+		}
 
-	cache := DatasetMerkletree{Root: tree.Root, Leaves: tree.Leaves}
+	} else {
+		tree, err := mt.New(CommpHashConfig, Leaves)
+		if err != nil {
+			log.Error(err)
+			return nil, err
+		}
+
+		cache = DatasetMerkletree{Root: tree.Root, Leaves: tree.Leaves}
+	}
 	cPath := createPath(cachePath, CACHE_DATASET_PROOF_PATH)
-	err = NewDatasetProof(cache, sizes).save(cPath)
+	err := NewDatasetProof(cache, sizes).save(cPath)
 	if err != nil {
 		log.Error(err)
 		return nil, err
 	}
 
-	return tree.Root, nil
+	return cache.Root, nil
+
 }
 
 // Verify commPs Merkle-Tree proof
@@ -206,24 +221,37 @@ func VerifyDatasetProof(cachePath string, randomness uint64) (bool, *mt.Proof, e
 		return false, nil, err
 	}
 	cache := datasetProof.proof()
-
 	Leaves := NewDataBlocksFromBytes(cache.Leaves)
-	tree, err := mt.New(CommpHashConfig, Leaves)
-	if err != nil {
+
+	if err := errors.New("the number of leaves must be greater than 0"); len(Leaves) < 1 {
 		log.Error(err)
 		return false, nil, err
-	}
 
-	if !reflect.DeepEqual(tree.Root, cache.Root) {
-		proof, err := tree.Proof(Leaves[randomness%uint64(len(Leaves))])
+	} else if len(Leaves) == 1 {
+		if bytes.Equal(cache.Root, cache.Leaves[0]) {
+			return true, nil, nil
+		} else {
+			return false, nil, nil
+		}
+
+	} else {
+		tree, err := mt.New(CommpHashConfig, Leaves)
 		if err != nil {
+			log.Error(err)
 			return false, nil, err
 		}
 
-		return false, proof, nil
-	}
+		if !reflect.DeepEqual(tree.Root, cache.Root) {
+			proof, err := tree.Proof(Leaves[randomness%uint64(len(Leaves))])
+			if err != nil {
+				return false, nil, err
+			}
 
-	return true, nil, nil
+			return false, proof, nil
+		}
+
+		return true, nil, nil
+	}
 }
 
 // Generate challenge nodes Proofs
