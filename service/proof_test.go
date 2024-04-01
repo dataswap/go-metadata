@@ -89,12 +89,12 @@ func TestChallengeProof(t *testing.T) {
 
 	_, err := GenChallengeProof(randomness.Uint64(), cachePath)
 	if err != nil {
-		t.Errorf("Proof fail")
+		t.Errorf("Proof fail: %s", err)
 	}
 
 	bl, err := VerifyChallengeProof(cachePath)
 	if err != nil || !bl {
-		t.Errorf("VerifyChallengeProof fail")
+		t.Errorf("VerifyChallengeProof fail: %s, bl:%t", err, bl)
 	}
 }
 

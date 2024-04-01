@@ -23,6 +23,12 @@ type DatasetMerkletree struct {
 	Leaves [][]byte
 }
 
+// Proofs represents the challenge proofs data structure.
+type Proofs struct {
+	Leaves []string
+	Proofs []mt.Proof
+}
+
 // ChallengeProofs represents the challenge proofs data structure.
 type ChallengeProofs struct {
 	RandomSeed uint64
@@ -36,6 +42,12 @@ type DatasetProof struct {
 	Root       string
 	LeafHashes []string
 	LeafSizes  []uint64
+}
+
+// CarChallenge struct represents the challenge information of a car, including the car index and corresponding challenges.
+type CarChallenge struct {
+	CarIndex uint64
+	Leaves   []uint64
 }
 
 // Padding DataBlock, commp leaf node use
@@ -183,21 +195,27 @@ func (d *DatasetProof) save(filePath string) error {
 	return utils.WriteJson(filePath, "\t", d)
 }
 
+// append the Proofs.
+func (p *Proofs) append(leaf string, proof mt.Proof) *Proofs {
+	p.Leaves = append(p.Leaves, leaf)
+	p.Proofs = append(p.Proofs, proof)
+	return p
+}
+
 // NewChallengeProofs creates a new ChallengeProofs instance from the provided randomness and proof map.
-func NewChallengeProofs(randomness uint64, proof map[string]mt.Proof) *ChallengeProofs {
+func NewChallengeProofs(randomness uint64, proofs Proofs) *ChallengeProofs {
 	var challengeProofs ChallengeProofs
-
 	challengeProofs.RandomSeed = randomness
+	challengeProofs.Leaves = proofs.Leaves
 
-	for key, value := range proof {
-		challengeProofs.Leaves = append(challengeProofs.Leaves, key)
+	for _, value := range proofs.Proofs {
 
 		siblings := make([]string, len(value.Siblings))
 		for i, sibling := range value.Siblings {
 			siblings[i] = utils.ConvertToHexPrefix(sibling)
 		}
-		challengeProofs.Siblings = append(challengeProofs.Siblings, siblings)
 
+		challengeProofs.Siblings = append(challengeProofs.Siblings, siblings)
 		challengeProofs.Paths = append(challengeProofs.Paths, fmt.Sprintf("0x%x", value.Path))
 	}
 	return &challengeProofs
@@ -222,8 +240,8 @@ func (c *ChallengeProofs) save(filePath string) error {
 }
 
 // proof returns a map of proof data for the ChallengeProofs instance.
-func (c *ChallengeProofs) proof() map[string]mt.Proof {
-	proofMap := make(map[string]mt.Proof)
+func (c *ChallengeProofs) proof() Proofs {
+	var proofs Proofs
 
 	for i, leaf := range c.Leaves {
 
@@ -233,11 +251,11 @@ func (c *ChallengeProofs) proof() map[string]mt.Proof {
 		}
 
 		path, _ := strconv.ParseUint(c.Paths[i], 0, 32)
-		proofMap[leaf] = mt.Proof{
+		proofs.append(leaf, mt.Proof{
 			Siblings: siblings,
 			Path:     uint32(path),
-		}
+		})
 	}
 
-	return proofMap
+	return proofs
 }

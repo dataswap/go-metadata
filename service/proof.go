@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math"
 	"math/bits"
 	"os"
 	"path"
@@ -30,14 +31,13 @@ const (
 	CHUNK_NODES_NUM   = 4
 
 	CAR_32GIB_SIZE      = uint64(1 << 35)
-	CAR_2MIB_CHUNK_SIZE = uint64(SOURCE_CHUNK_SIZE * CAR_2MIB_NODE_NUM) // source data node = 127, no padding
-	CAR_512B_CHUNK_SIZE = uint64(SOURCE_CHUNK_SIZE * CAR_512B_NODE_NUM) // source data node = 127, no padding
+	CAR_2MIB_CHUNK_SIZE = uint64(SOURCE_CHUNK_SIZE * CAR_2MIB_NODE_NUM / CHUNK_NODES_NUM) // source data node = 127, no padding
+	CAR_512B_CHUNK_SIZE = uint64(SOURCE_CHUNK_SIZE * CAR_512B_NODE_NUM / CHUNK_NODES_NUM) // source data node = 127, no padding
 
-	CAR_2MIB_NODE_NUM = uint64(1 << 20 * 2 / SLAB_CHUNK_SIZE) // = 2MIB / SLAB_CHUNK_SIZE
-	CAR_512B_NODE_NUM = uint64(1 << 9 / SLAB_CHUNK_SIZE)      // = 512B / SLAB_CHUNK_SIZE
+	CAR_2MIB_NODE_NUM = uint64(1 << 20 * 2 / NODE_SIZE) // = 2MIB / NODE_SIZE
+	CAR_512B_NODE_NUM = uint64(1 << 9 / NODE_SIZE)      // = 512B / NODE_SIZE
 
-	LEAF_CHALLENGE_MAX_COUNT = 172
-	LEAF_CHALLENGE_MIN_COUNT = 2
+	DATASET_RULE_CHALLENGE_POINTS_PER_AUDITOR = 5 // 5 point per auditor
 
 	CAR_2MIB_CACHE_LAYER_START  = 16
 	CAR_512B_CACHE_LAYER_START  = 4
@@ -255,7 +255,7 @@ func VerifyDatasetProof(cachePath string, randomness uint64) (bool, *mt.Proof, e
 }
 
 // Generate challenge nodes Proofs
-func GenChallengeProof(randomness uint64, cachePath string) (map[string]mt.Proof, error) {
+func GenChallengeProof(randomness uint64, cachePath string) (*Proofs, error) {
 
 	// 1. Generate challenge nodes
 	commPs, carSize := LoadSortCommp(cachePath)
@@ -265,17 +265,17 @@ func GenChallengeProof(randomness uint64, cachePath string) (map[string]mt.Proof
 	}
 
 	// 2. Get challenge chunk data
-	challengeProof := make(map[string]mt.Proof)
-	for carIndex, LeavesIndex := range carChallenges {
+	var proofs Proofs
+	for _, challenge := range carChallenges {
+		carChunkSize, carChunkNodes := CarChunkParams(carSize[challenge.CarIndex])
+		for _, leafIndex := range challenge.Leaves {
 
-		carChunkSize, carChunkNum := CarChunkParams(carSize[carIndex])
-		for _, leafIndex := range LeavesIndex {
-
-			commCid, err := commcid.DataCommitmentV1ToCID(commPs[carIndex])
+			commCid, err := commcid.DataCommitmentV1ToCID(commPs[challenge.CarIndex])
 			if err != nil {
 				return nil, err
 			}
-			buf, err := GetChallengeChunk(commCid, uint64((leafIndex/carChunkSize)*carChunkSize), carChunkSize)
+			offset := uint64((leafIndex / carChunkNodes) * carChunkSize)
+			buf, err := GetChallengeChunk(commCid, offset, carChunkSize)
 			if err != nil {
 				return nil, err
 			}
@@ -285,7 +285,7 @@ func GenChallengeProof(randomness uint64, cachePath string) (map[string]mt.Proof
 			if err != nil {
 				return nil, err
 			}
-			proof, root, err := GenProof(blocks, blocks[leafIndex%carChunkNum])
+			proof, root, err := GenProof(blocks, blocks[leafIndex%carChunkNodes])
 			if err != nil {
 				return nil, err
 			}
@@ -306,19 +306,20 @@ func GenChallengeProof(randomness uint64, cachePath string) (map[string]mt.Proof
 			if proof == nil {
 				return nil, errors.New("proof is nil")
 			}
-			leaf, err := blocks[leafIndex%carChunkNum].Serialize()
+			leaf, err := blocks[leafIndex%carChunkNodes].Serialize()
 			if err != nil {
 				return nil, err
 			}
-			challengeProof[utils.ConvertToHexPrefix(leaf)] = *proof
+			// fmt.Print("\r\nleaf", leaf, "root:", root, "proof:", proof, "\r\n")
+			proofs.append(utils.ConvertToHexPrefix(leaf), *proof)
 		}
 	}
 
 	// 6. Store to cache file
 	cPath := createPath(cachePath, CACHE_CHALLENGE_PROOFS_PATH)
-	NewChallengeProofs(randomness, challengeProof).save(cPath)
+	NewChallengeProofs(randomness, proofs).save(cPath)
 
-	return challengeProof, nil
+	return &proofs, nil
 }
 
 // Verify challenge nodes Proof
@@ -346,15 +347,16 @@ func VerifyChallengeProof(cachePath string) (bool, error) {
 	// 3. Verify proofs
 	var idx []uint64
 	i := 0
-	for carIndex, LeavesIndex := range carChallenges {
-		for range LeavesIndex {
-			idx = append(idx, carIndex)
+	for _, challenge := range carChallenges {
+		for range challenge.Leaves {
+			idx = append(idx, challenge.CarIndex)
 		}
 	}
 
-	for _leaf, proof := range proofs {
-		leaf, _ := utils.ParseHexWithPrefix(_leaf)
-		rst, err := mt.Verify(&DataBlock{Data: leaf}, &proof, commPs[idx[i]], CommpHashConfig)
+	for index, leaf := range proofs.Leaves {
+		leaf, _ := utils.ParseHexWithPrefix(leaf)
+		// fmt.Print("\r\nleaf", leaf, "root:", commPs[idx[i]], "proof:", proofs.Proofs[index], "\r\n")
+		rst, err := mt.Verify(&DataBlock{Data: leaf}, &proofs.Proofs[index], commPs[idx[i]], CommpHashConfig)
 		if err != nil || !rst {
 			return false, err
 		}
@@ -443,21 +445,26 @@ func LoadSortCommp(cachePath string) ([][]byte, []uint64) {
 }
 
 // Car leaf challenge count.
-func LeafChallengeCount(carSize uint64) uint32 {
-	if carSize >= CAR_32GIB_SIZE {
-		return LEAF_CHALLENGE_MAX_COUNT
-	} else {
-		return LEAF_CHALLENGE_MIN_COUNT
+func LeafChallengeCount(carChallengesCount uint64) []uint64 {
+
+	leafChallengeCount := make([]uint64, carChallengesCount)
+	equalDistribution := DATASET_RULE_CHALLENGE_POINTS_PER_AUDITOR / carChallengesCount
+	remainder := DATASET_RULE_CHALLENGE_POINTS_PER_AUDITOR % carChallengesCount
+
+	for i := range leafChallengeCount {
+		leafChallengeCount[i] = equalDistribution
 	}
+
+	for i := uint64(0); i < remainder; i++ {
+		leafChallengeCount[i]++
+	}
+
+	return leafChallengeCount
 }
 
 // Car challenge count
 func CarChallengeCount(carNum uint64) uint64 {
-	if carNum < 1000 {
-		return 1
-	} else {
-		return carNum/1000 + 1
-	}
+	return uint64(math.Min(float64(carNum), float64(DATASET_RULE_CHALLENGE_POINTS_PER_AUDITOR)))
 }
 
 // CarChunkParams returns the chunk size and node number for a given CAR size.
@@ -482,17 +489,26 @@ func CarCacheLayerStart(carSize uint64) int {
 	}
 }
 
-// GenChallenges is generate the challenges car nodes
-func GenChallenges(randomness uint64, carNum uint64, carSize []uint64) (map[uint64][]uint64, error) {
-	carChallenges := make(map[uint64][]uint64)
-
+// GenChallenges function generates challenge information for cars and returns a sequentially traversable structure.
+func GenChallenges(randomness uint64, carNum uint64, carSize []uint64) ([]CarChallenge, error) {
+	// Calculate the number of car challenges and leaf challenges per car
 	carChallengesCount := CarChallengeCount(carNum)
+	leafChallengeCount := LeafChallengeCount(carChallengesCount)
 
+	// Initialize a slice to store car challenge information
+	carChallenges := make([]CarChallenge, carChallengesCount)
+
+	// Generate challenges for each car
 	for i := uint64(0); i < carChallengesCount; i++ {
-		carIndex := GenCarChallenge(randomness, i, carChallengesCount)
-		leafChallengeCount := LeafChallengeCount(carSize[carIndex])
-		for j := uint32(0); j < leafChallengeCount; j++ {
-			carChallenges[carIndex] = append(carChallenges[carIndex], GenLeafChallenge(randomness, carIndex, j, carSize[carIndex]))
+		carIndex := GenCarChallenge(randomness, i, carChallengesCount, carNum)
+		leaves, err := GenLeafChallenge(randomness, carIndex, leafChallengeCount[i], carSize[carIndex])
+		if err != nil {
+			return nil, err
+		}
+		// Add car challenge information to the slice
+		carChallenges[i] = CarChallenge{
+			CarIndex: carIndex,
+			Leaves:   leaves,
 		}
 	}
 
@@ -501,42 +517,62 @@ func GenChallenges(randomness uint64, carNum uint64, carSize []uint64) (map[uint
 
 // GenCarChallenge generates a car challenge index using randomness, the car challenge index, and the total number of car challenges.
 // It returns the generated car challenge index.
-func GenCarChallenge(randomness uint64, carChallengeIndex uint64, carChallengesCount uint64) uint64 {
-	sha256Func := sha256simd.New()
+func GenCarChallenge(randomness uint64, carChallengeIndex uint64, carChallengesCount uint64, carNum uint64) uint64 {
+	if carChallengesCount == carNum {
+		return carChallengeIndex
+	} else {
+		sha256Func := sha256simd.New()
 
-	bytes := make([]byte, 8)
-	binary.LittleEndian.PutUint64(bytes[:8], randomness)
-	sha256Func.Write(bytes)
+		bytes := make([]byte, 8)
+		binary.LittleEndian.PutUint64(bytes[:8], randomness)
+		sha256Func.Write(bytes)
 
-	binary.LittleEndian.PutUint64(bytes[:8], carChallengeIndex)
-	sha256Func.Write(bytes)
+		binary.LittleEndian.PutUint64(bytes[:8], carChallengeIndex)
+		sha256Func.Write(bytes)
 
-	hash := sha256Func.Sum(nil)
+		hash := sha256Func.Sum(nil)
 
-	carChallenge := binary.LittleEndian.Uint64(hash[:8])
-	return carChallenge % carChallengesCount
+		carChallenge := binary.LittleEndian.Uint64(hash[:8])
+		return carChallenge % carChallengesCount
+	}
 }
 
 // GenLeafChallenge generates a leaf challenge index using randomness, the car index, the leaf challenge index, and the size of the car.
 // It returns the generated leaf challenge index.
-func GenLeafChallenge(randomness uint64, carIndex uint64, leafChallengeIndex uint32, carSize uint64) uint64 {
-	sha256Func := sha256simd.New()
+func GenLeafChallenge(randomness uint64, carIndex uint64, leafChallengeCount uint64, carSize uint64) ([]uint64, error) {
+	points := carSize / NODE_SIZE
+	leaves := make([]uint64, 0, leafChallengeCount)
+	if leafChallengeCount > points {
+		return nil, errors.New("car points is less leafChallengeCount")
+	} else if leafChallengeCount == points {
+		for i := uint64(0); i < leafChallengeCount; i++ {
+			leaves = append(leaves, i)
+		}
+	} else {
+		uniqueLeaves := make(map[uint64]bool)
+		for len(uniqueLeaves) < int(leafChallengeCount) {
+			sha256Func := sha256.New()
 
-	bytes := make([]byte, 8)
-	binary.LittleEndian.PutUint64(bytes[:8], randomness)
-	sha256Func.Write(bytes)
+			bytes := make([]byte, 8)
+			binary.LittleEndian.PutUint64(bytes[:8], randomness)
+			sha256Func.Write(bytes)
 
-	binary.LittleEndian.PutUint64(bytes[:8], carIndex)
-	sha256Func.Write(bytes)
+			binary.LittleEndian.PutUint64(bytes[:8], carIndex)
+			sha256Func.Write(bytes)
 
-	bytes = make([]byte, 4)
-	binary.LittleEndian.PutUint32(bytes[:4], leafChallengeIndex)
-	sha256Func.Write(bytes)
+			hash := sha256Func.Sum(nil)
 
-	hash := sha256Func.Sum(nil)
+			leaf := binary.LittleEndian.Uint64(hash[:8]) % points
+			uniqueLeaves[leaf] = true
+			randomness++
+		}
 
-	leaf_challenge := binary.LittleEndian.Uint64(hash[:8])
-	return leaf_challenge % carSize
+		for leaf := range uniqueLeaves {
+			leaves = append(leaves, leaf)
+		}
+	}
+
+	return leaves, nil
 }
 
 // GenProof generates a Merkle tree proof for the specified leaf block.

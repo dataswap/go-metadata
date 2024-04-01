@@ -215,4 +215,4 @@ require (
 
 replace github.com/ipfs/go-unixfs => github.com/dataswap/go-unixfs v0.4.8-0.20230821121547-dd2cd70ed7f5
 
-replace github.com/txaty/go-merkletree => github.com/dataswap/go-merkletree v0.1.16-0.20230815040153-1fec7617de00
+replace github.com/txaty/go-merkletree => github.com/dataswap/go-merkletree v0.1.16

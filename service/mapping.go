@@ -234,6 +234,7 @@ func (ms *MappingService) LoadMetaMappings(path string) error {
 	if err != nil {
 		return err
 	}
+	ms.mappings = make(map[cid.Cid]*types.ChunkMapping, 0)
 	ms.dataRoot = m.DataRoot
 	for _, v := range m.Mappings {
 		ms.mappings[v.Cid] = v
@@ -447,6 +448,15 @@ func GetChallengeChunk(commCid cid.Cid, offset uint64, size uint64) ([]byte, err
 		return nil, err
 	}
 	defer file.Close()
+
+	fileInfo, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	fileSize := fileInfo.Size() - int64(offset)
+	if fileSize < int64(size) {
+		size = uint64(fileSize)
+	}
 
 	// Get fragment file cache from a specific offset in the temporary file.
 	buf := make([]byte, size)
