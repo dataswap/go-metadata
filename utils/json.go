@@ -2,7 +2,6 @@ package utils
 
 import (
 	"encoding/json"
-	"io/ioutil"
 	"os"
 )
 
@@ -19,7 +18,7 @@ func PathExists(path string) bool {
 }
 
 func ReadJson(filePath string, val interface{}) error {
-	data, err := ioutil.ReadFile(filePath)
+	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return err
 	}
@@ -43,5 +42,5 @@ func WriteJson(filePath string, indent string, val interface{}) error {
 		return err
 	}
 
-	return ioutil.WriteFile(filePath, data, 0644)
+	return os.WriteFile(filePath, data, 0644)
 }
