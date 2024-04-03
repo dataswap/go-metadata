@@ -533,7 +533,7 @@ func GenCarChallenge(randomness uint64, carChallengeIndex uint64, carChallengesC
 		hash := sha256Func.Sum(nil)
 
 		carChallenge := binary.LittleEndian.Uint64(hash[:8])
-		return carChallenge % carChallengesCount
+		return carChallenge % carNum
 	}
 }
 
